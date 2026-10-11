@@ -1811,6 +1811,34 @@ async function captureCardFieldsOrder(kind, key, token, paypalOrderID) {
     throw new Error("The PayPal order does not match this checkout. Please start a new checkout.");
   }
 
+  // Verify the issuer's 3-D Secure result from PayPal's server-side order
+  // details before capture. The browser's popup closing is not proof of success.
+  const accessToken = await paypalAccessToken();
+  const verificationResponse = await fetch(
+    `${paypalApiBase()}/v2/checkout/orders/${encodeURIComponent(paypalOrderID)}?fields=payment_source`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const verificationOrder = await verificationResponse.json().catch(() => ({}));
+  if (!verificationResponse.ok) {
+    console.error("PayPal 3-D Secure verification lookup failed:", verificationResponse.status);
+    throw new Error("Could not verify the card authentication result with PayPal. No capture was attempted; please try another payment method.");
+  }
+
+  const cardAuthentication = verificationOrder?.payment_source?.card?.authentication_result;
+  const liabilityShift = String(cardAuthentication?.liability_shift || "").toUpperCase();
+  const authenticationStatus = String(cardAuthentication?.three_d_secure?.authentication_status || "").toUpperCase();
+
+  // Only proceed when PayPal reports an acceptable liability shift and the
+  // challenge was not failed, rejected, or left incomplete.
+  if (!["POSSIBLE", "YES"].includes(liabilityShift) ||
+      ["N", "R", "U", "C"].includes(authenticationStatus)) {
+    console.warn("Card payment blocked because 3-D Secure was not verified:", {
+      liabilityShift: liabilityShift || "MISSING",
+      authenticationStatus: authenticationStatus || "MISSING"
+    });
+    throw new Error("Your card's 3-D Secure authentication could not be verified. Aura Cloud has not captured the payment. Please try another card or payment method.");
+  }
+
   const captured = await capturePayPalOrder(paypalOrderID);
   const details = captureDetails(captured);
   const expectedAmount = Number(record.paypalAmount || await paypalUsdAmount(record)).toFixed(2);
