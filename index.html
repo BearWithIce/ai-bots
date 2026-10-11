@@ -493,6 +493,25 @@
       box-shadow: 0 8px 24px #1769df18;
     }
 
+    .hosted-paypal-button {
+      width: 100%;
+      min-height: 46px;
+      padding: 0 2rem;
+      border: none;
+      border-radius: .25rem;
+      background: #ffd140;
+      color: #000;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1.25rem;
+      cursor: pointer;
+    }
+
+    .hosted-paypal-button:hover {
+      filter: brightness(.97);
+    }
+
     .secure-note {
       margin-top: 13px;
       color: var(--muted);
@@ -857,120 +876,56 @@
           </div>
         </div>
 
-        <!-- PAYPAL CHECKOUT -->
+        <!-- OFFICIAL PAYPAL HOSTED PAYMENT -->
 
-        <section id="paypal-section" class="method-card hidden">
+        <section id="other-payment-section" class="method-card">
           <div class="method-heading">
             <div class="method-icon">P</div>
             <div>
-              <strong>PayPal checkout</strong>
-              <small>Pay with your PayPal account</small>
+              <strong>Other payment</strong>
+              <small>Official PayPal hosted checkout</small>
             </div>
           </div>
 
           <p class="description">
-            Continue to PayPal to sign in and approve your payment.
-            PayPal will return you after you complete or cancel checkout.
+            Review the order summary on the left, then continue to PayPal's official secure payment page.
+            PayPal may offer debit or credit card payment without requiring a PayPal account.
           </p>
 
-          <a
-            id="paypal-pay"
-            class="button paypal"
-            href="#"
-            rel="noopener noreferrer"
+          <form
+            id="hosted-paypal-form"
+            action="https://www.paypal.com/ncp/payment/ZVWVGJB8UL2FW"
+            method="post"
+            target="_blank"
+            rel="noopener"
+            style="display:grid;justify-items:center;align-content:start;gap:.65rem"
           >
-            Continue to PayPal <span>→</span>
-          </a>
-
-          <div class="secure-note">
-            <b>●</b> Payment handled securely by PayPal
-          </div>
-        </section>
-
-        <!-- DEBIT / CREDIT CARD CHECKOUT -->
-
-        <section id="card-method" class="method-card hidden">
-          <div class="method-heading">
-            <div class="method-icon">▣</div>
-            <div>
-              <strong>Debit or credit card</strong>
-              <small>Secure PayPal-hosted card fields</small>
-            </div>
-          </div>
-
-          <p class="description">
-            Enter your card details through PayPal's secure payment fields.
-            Your card number and security code are not sent to Aura Cloud.
-            Guest card checkout depends on PayPal account eligibility.
-          </p>
-
-          <button id="show-card" class="button" type="button">
-            Continue to card details <span>→</span>
-          </button>
-
-          <div id="card-form" class="hidden">
-
-            <div class="card-logos">
-              <span>VISA</span>
-              <span>MASTERCARD</span>
-              <span>DEBIT</span>
-              <span>CREDIT</span>
-            </div>
-
-            <div class="field">
-              <label for="card-name">Name on card</label>
-              <input
-                id="card-name"
-                class="text-input"
-                autocomplete="cc-name"
-                placeholder="Cardholder name"
-                maxlength="120"
+            <button class="hosted-paypal-button" type="submit">
+              දැන් මිලදී ගන්න
+            </button>
+            <img
+              src="https://www.paypalobjects.com/images/Debit_Credit.svg"
+              alt="Debit and credit cards accepted by PayPal"
+              style="display:block;max-width:100%;height:auto"
+            >
+            <div style="font-size:.75rem;color:var(--muted);text-align:center">
+              Powered by
+              <img
+                src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg"
+                alt="PayPal"
+                style="height:.875rem;vertical-align:middle"
               >
             </div>
+          </form>
 
-            <div class="field">
-              <label>Card number</label>
-              <div id="card-number" class="hosted-field"></div>
-            </div>
-
-            <div class="field">
-              <label>Expiry date</label>
-              <div id="card-expiry" class="hosted-field"></div>
-            </div>
-
-            <div class="field">
-              <label>Security code</label>
-              <div id="card-cvv" class="hosted-field"></div>
-            </div>
-
-            <div id="card-error" class="error" role="alert"></div>
-
-            <button
-              id="card-pay"
-              class="button"
-              type="button"
-              disabled
-            >
-              Loading secure card fields…
-            </button>
-
-            <button
-              id="cancel-card"
-              class="button secondary"
-              type="button"
-            >
-              Cancel
-            </button>
-
-            <p class="hint">
-              By selecting Pay securely, you authorize the amount shown
-              above. Your payment is marked paid only after the server
-              verifies the captured payment amount.
-            </p>
-          </div>
+          <p class="hint">
+            Important: this is a PayPal-hosted payment button. Confirm that its amount and currency
+            match the order total shown on the left before paying. Your Aura Cloud order remains
+            pending until payment is verified.
+          </p>
 
           <div class="secure-note">
-            <b>●</b> PayPal-hosted card fields · Aura Cloud does not store card data
+            <b>●</b> Payment is processed on PayPal's website
           </div>
         </section>
 
@@ -1127,266 +1082,37 @@
             )}. The payment provider shows the final amount before you approve.`;
         }
 
-        if (data.paymentMethodKey === "card") {
-          $("notice-title").textContent =
-            "Secure card checkout";
-
-          $("notice-note").textContent =
-            "Your card is processed by PayPal's secure Card Fields. " +
-            "Your card number and security code are never sent to Aura Cloud.";
-
-          $("card-method").classList.remove("hidden");
-
-        } else if (data.paymentMethodKey === "paypal") {
-          const href = String(data.checkoutUrl || "");
-          let parsed;
-
-          try {
-            parsed = new URL(href);
-          } catch {
-            throw new Error(
-              "The secure PayPal approval link is missing. " +
-              "Start a new checkout in Discord."
-            );
-          }
-
-          if (
-            parsed.protocol !== "https:" ||
-            !/(^|\.)paypal\.com$/i.test(parsed.hostname)
-          ) {
-            throw new Error(
-              "The PayPal approval link is invalid. " +
-              "Start a new checkout in Discord."
-            );
-          }
-
-          $("paypal-pay").href = parsed.href;
-          $("paypal-section").classList.remove("hidden");
-
-          $("notice-title").textContent =
-            "PayPal checkout is ready";
-
-          $("notice-note").textContent =
-            "Review your order and continue to PayPal to sign in " +
-            "and approve payment.";
-
-        } else {
+        if (data.paymentMethodKey !== "other") {
           throw new Error(
-            "This order does not have an automatic card or PayPal " +
-            "payment method selected."
+            "This checkout is not configured for Other Payment. " +
+            "Return to Discord and select Other Payment again."
           );
         }
+
+        const hostedUrl = String(data.hostedPayPalUrl || "");
+        let parsedHostedUrl;
+        try {
+          parsedHostedUrl = new URL(hostedUrl);
+        } catch {
+          throw new Error("The official PayPal hosted payment link is missing. Contact Aura Cloud support.");
+        }
+
+        if (
+          parsedHostedUrl.protocol !== "https:" ||
+          !/(^|\\.)paypal\\.com$/i.test(parsedHostedUrl.hostname) ||
+          parsedHostedUrl.pathname !== "/ncp/payment/ZVWVGJB8UL2FW"
+        ) {
+          throw new Error("The PayPal hosted payment link failed security validation.");
+        }
+
+        $("hosted-paypal-form").action = parsedHostedUrl.href;
+        $("notice-title").textContent = "PayPal hosted checkout is ready";
+        $("notice-note").textContent =
+          "The item and total are shown on the left. Use the official PayPal button to continue; Aura Cloud confirms payment only after verifying it.";
+        put("method", "Other Payment — PayPal hosted checkout");
 
         $("loading").classList.add("hidden");
         $("content").classList.remove("hidden");
-      }
-
-      function loadPayPalSdk(clientId) {
-        if (window.paypal?.CardFields) {
-          return Promise.resolve(window.paypal);
-        }
-
-        if (sdkPromise) {
-          return sdkPromise;
-        }
-
-        sdkPromise = new Promise((resolve, reject) => {
-          const src = new URL("https://www.paypal.com/sdk/js");
-
-          src.searchParams.set("client-id", clientId);
-          src.searchParams.set("components", "card-fields");
-          src.searchParams.set(
-            "currency",
-            data.paypalCurrency || "USD"
-          );
-          src.searchParams.set("intent", "capture");
-
-          const script = document.createElement("script");
-
-          script.src = src.toString();
-          script.async = true;
-
-          script.onload = () => {
-            if (window.paypal?.CardFields) {
-              resolve(window.paypal);
-            } else {
-              reject(
-                new Error(
-                  "PayPal Card Fields did not initialize."
-                )
-              );
-            }
-          };
-
-          script.onerror = () => {
-            reject(
-              new Error(
-                "Could not load PayPal's secure card fields. " +
-                "Check your connection and try again."
-              )
-            );
-          };
-
-          document.head.appendChild(script);
-        });
-
-        return sdkPromise;
-      }
-
-      async function startCardFields() {
-        clearError("card-error");
-
-        $("show-card").classList.add("hidden");
-        $("card-form").classList.remove("hidden");
-        $("card-pay").disabled = true;
-        $("card-pay").textContent =
-          "Loading secure card fields…";
-
-        try {
-          if (!data.paypalClientId) {
-            throw new Error(
-              "Card checkout is not configured. Add " +
-              "PAYPAL_CLIENT_ID to the bot's .env file and restart it."
-            );
-          }
-
-          const paypal = await loadPayPalSdk(
-            data.paypalClientId
-          );
-
-          fields = paypal.CardFields({
-            createOrder: async () => {
-              const result = await post(
-                "/api/paypal/create-order",
-                { kind, order, token }
-              );
-
-              if (!result.orderID) {
-                throw new Error(
-                  "PayPal did not return a payment order ID."
-                );
-              }
-
-              return result.orderID;
-            },
-
-            onApprove: async approval => {
-              $("card-pay").disabled = true;
-              $("card-pay").textContent =
-                "Verifying payment…";
-
-              const result = await post(
-                "/api/paypal/capture-order",
-                {
-                  kind,
-                  order,
-                  token,
-                  paypalOrderID: approval.orderID
-                }
-              );
-
-              if (result.paid !== true) {
-                throw new Error(
-                  result.message ||
-                  "Payment has not been verified yet."
-                );
-              }
-
-              $("card-form").classList.add("hidden");
-              $("card-method").classList.add("hidden");
-
-              $("success").textContent =
-                result.message ||
-                "Payment verified. Your invoice has been sent to Discord.";
-
-              $("success").style.display = "block";
-
-              const link = document.createElement("a");
-
-              link.className = "button";
-              link.href =
-                result.returnUrl ||
-                "https://discord.com/channels/@me";
-              link.rel = "noopener noreferrer";
-              link.textContent = "Return to Discord";
-
-              $("success").appendChild(
-                document.createElement("br")
-              );
-              $("success").appendChild(link);
-            },
-
-            onError: error => {
-              console.error(
-                "PayPal Card Fields error:",
-                error
-              );
-
-              showError(
-                "PayPal could not complete this card payment. " +
-                "Check the details or contact Aura Cloud support.",
-                "card-error"
-              );
-
-              $("card-pay").disabled = false;
-              $("card-pay").textContent = "Pay securely";
-            }
-          });
-
-          if (!fields.isEligible()) {
-            throw new Error(
-              "PayPal Card Fields is not enabled or eligible for " +
-              "this merchant account. Enable Advanced Credit and " +
-              "Debit Card Payments in PayPal. If PayPal does not " +
-              "offer this feature for your account, choose PayPal checkout instead."
-            );
-          }
-
-          const style = {
-            input: {
-              color: "#faf9fc",
-              "font-size": "16px",
-              "font-family": "Arial, sans-serif"
-            },
-            ".invalid": {
-              color: "#fb7185"
-            },
-            ":focus": {
-              color: "#ffffff"
-            }
-          };
-
-          await Promise.all([
-            fields.NumberField({ style }).render("#card-number"),
-            fields.ExpiryField({ style }).render("#card-expiry"),
-            fields.CVVField({ style }).render("#card-cvv")
-          ]);
-
-          cardReady = true;
-
-          $("card-pay").disabled = false;
-          $("card-pay").textContent =
-            `Pay ${money(
-              data.paypalAmount,
-              data.paypalCurrency || "USD"
-            )} securely`;
-
-        } catch (error) {
-          console.error(
-            "Card checkout setup failed:",
-            error
-          );
-
-          showError(
-            error.message ||
-            "Could not initialize card checkout.",
-            "card-error"
-          );
-
-          $("card-pay").disabled = true;
-          $("card-pay").textContent =
-            "Card checkout unavailable";
-        }
       }
 
       $("cancel-checkout").addEventListener("click", async () => {
@@ -1422,62 +1148,6 @@
           busy = false;
         }
       });
-      $("show-card").addEventListener(
-        "click",
-        startCardFields
-      );
-
-      $("cancel-card").addEventListener("click", () => {
-        $("card-form").classList.add("hidden");
-        $("show-card").classList.remove("hidden");
-        clearError("card-error");
-      });
-
-      $("card-pay").addEventListener(
-        "click",
-        async () => {
-          if (!cardReady || !fields || busy) {
-            return;
-          }
-
-          busy = true;
-          clearError("card-error");
-
-          $("card-pay").disabled = true;
-          $("card-pay").textContent =
-            "Processing securely…";
-
-          try {
-            await fields.submit({
-              cardholderName: $("card-name").value.trim()
-            });
-
-          } catch (error) {
-            console.error(
-              "Card payment submit failed:",
-              error
-            );
-
-            showError(
-              error.message ||
-              "Card payment could not be submitted. " +
-              "Check the details and try again.",
-              "card-error"
-            );
-
-            $("card-pay").disabled = false;
-            $("card-pay").textContent =
-              `Pay ${money(
-                data.paypalAmount,
-                data.paypalCurrency || "USD"
-              )} securely`;
-
-          } finally {
-            busy = false;
-          }
-        }
-      );
-
       loadCheckout().catch(error => {
         console.error("Checkout load failed:", error);
 
