@@ -83,7 +83,22 @@ const PAYMENTS = {
   bank: {
     label: "Bank Transfer",
     emoji: "🏦",
-    detail: () => process.env.BANK_TRANSFER_DETAILS || "BANK_TRANSFER_DETAILS_NOT_CONFIGURED"
+    detail: () => {
+      const bank = String(process.env.BANK_TRANSFER_BANK || "BOC").trim();
+      const branch = String(process.env.BANK_TRANSFER_BRANCH || "Kollupitiya").trim();
+      const accountName = String(process.env.BANK_TRANSFER_ACCOUNT_NAME || "R.P.D.DHARMANI").trim();
+      const accountNumber = String(process.env.BANK_TRANSFER_ACCOUNT_NUMBER || "84408902").trim();
+
+      // Explicit fields prevent .env multiline formatting from hiding account details.
+      const details = [
+        bank && branch ? `**Bank:** ${bank} — ${branch}` : (bank || branch ? `**Bank:** ${bank || branch}` : ""),
+        accountName ? `**Account Name:** ${accountName}` : "",
+        accountNumber ? `**Account Number:** ${accountNumber}` : ""
+      ].filter(Boolean);
+
+      if (details.length) return details.join("\\n");
+      return String(process.env.BANK_TRANSFER_DETAILS || "Bank transfer details are not configured. Contact Aura Cloud support.").trim();
+    }
   },
   card: {
     label: "Card Payment",
