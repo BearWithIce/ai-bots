@@ -1732,6 +1732,108 @@ async function cancelWebCheckout(kind, key, token) {
     returnUrl: "https://discord.com/channels/@me"
   };
 }
+async function createOtherPaymentOrder(kind, key, token) {
+  if (!paypalConfigured()) throw new Error("PayPal is not configured on the server.");
+  const record = await loadCheckoutSession(kind, key, token);
+  if (record.paymentMethodKey !== "other") {
+    throw new Error("This checkout was not started with Other Payment.");
+  }
+
+  const expectedAmount = Number(await paypalUsdAmount(record)).toFixed(2);
+  if (!Number.isFinite(Number(expectedAmount)) || Number(expectedAmount) <= 0) {
+    throw new Error("The checkout amount is invalid. Contact Aura Cloud support.");
+  }
+
+  const reference = String(record.orderNumber || record.renewalId || key);
+  const accessToken = await paypalAccessToken();
+  const response = await fetch(`${paypalApiBase()}/v2/checkout/orders`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "PayPal-Request-Id": `aura-other-${reference}-${crypto.randomBytes(8).toString("hex")}`
+    },
+    body: JSON.stringify({
+      intent: "CAPTURE",
+      purchase_units: [{
+        reference_id: reference,
+        custom_id: reference,
+        invoice_id: `${reference}-OTHER-${Date.now()}`.slice(0, 127),
+        description: `Aura Cloud Hosting ${record.service || record.serviceName || record.serverName || "hosting"} — ${reference}`.slice(0, 127),
+        amount: { currency_code: "USD", value: expectedAmount }
+      }]
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.id) {
+    console.error("PayPal Other Payment create-order failed:", response.status, data);
+    throw new Error("PayPal could not start checkout. Please try again or choose another payment method.");
+  }
+
+  await updateCheckoutRecord(kind, key, record, {
+    paypalOtherOrderId: data.id,
+    paypalAmount: expectedAmount,
+    paypalCurrency: "USD",
+    paypalOtherOrderCreatedAt: new Date().toISOString()
+  });
+
+  return { orderID: data.id, amount: expectedAmount, currency: "USD" };
+}
+
+async function captureOtherPaymentOrder(kind, key, token, paypalOrderID) {
+  if (!paypalConfigured()) throw new Error("PayPal is not configured on the server.");
+  const record = await loadCheckoutSession(kind, key, token);
+  if (record.paymentMethodKey !== "other") {
+    throw new Error("This checkout was not started with Other Payment.");
+  }
+  if (!paypalOrderID || String(record.paypalOtherOrderId || "") !== String(paypalOrderID)) {
+    throw new Error("The PayPal order does not match this checkout. Please start checkout again.");
+  }
+
+  const captured = await capturePayPalOrder(paypalOrderID);
+  const details = captureDetails(captured);
+  const expectedAmount = Number(record.paypalAmount || await paypalUsdAmount(record)).toFixed(2);
+  const expectedReference = String(record.orderNumber || record.renewalId || key);
+  const matches = details.status === "COMPLETED" &&
+    Boolean(details.captureId) &&
+    details.currency === "USD" &&
+    Number.isFinite(Number(details.amount)) &&
+    Number(details.amount).toFixed(2) === expectedAmount &&
+    details.customId === expectedReference;
+
+  if (!matches) {
+    await updateCheckoutRecord(kind, key, record, {
+      paypalCaptureStatus: details.status || "NOT_COMPLETED",
+      paypalCaptureCheckedAt: new Date().toISOString()
+    });
+    throw new Error("PayPal did not confirm a completed payment matching this order and amount. The order has not been marked paid.");
+  }
+
+  const capture = captured?.purchase_units?.[0]?.payments?.captures?.[0];
+  await updateCheckoutRecord(kind, key, record, {
+    paypalCaptureStatus: "COMPLETED",
+    paypalCaptureId: capture?.id || null,
+    paypalCapturedAmount: details.amount,
+    paypalCapturedCurrency: details.currency,
+    paypalCapturedAt: new Date().toISOString(),
+    status: "payment_selected"
+  });
+
+  const systemUser = { id: "paypal-other-system", username: "PayPal Checkout", tag: "PayPal Checkout" };
+  if (kind === "buy") {
+    await finalizeOrder(record.orderNumber, systemUser, null, paypalDiscordClient);
+  } else {
+    await finalizeRenewal(key, systemUser, paypalDiscordClient);
+  }
+
+  return {
+    paid: true,
+    message: "Payment verified successfully. Aura Cloud has confirmed your order and sent the invoice to your Discord DM.",
+    returnUrl: "https://discord.com/channels/@me"
+  };
+}
+
 async function createCardFieldsOrder(kind, key, token) {
   if (!paypalConfigured()) throw new Error("Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env first.");
   const record = await loadCheckoutSession(kind, key, token);
@@ -1922,6 +2024,18 @@ export function startPayPalCallbackServer(client) {
         const key = String(body.order || "");
         const token = String(body.token || "");
         sendJson(res, 200, await cancelWebCheckout(kind, key, token));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/paypal/other/create-order") {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, await createOtherPaymentOrder(String(body.kind || "buy"), String(body.order || ""), String(body.token || "")));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/paypal/other/capture-order") {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, await captureOtherPaymentOrder(String(body.kind || "buy"), String(body.order || ""), String(body.token || ""), String(body.paypalOrderID || "")));
         return;
       }
 
