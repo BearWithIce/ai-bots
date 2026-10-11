@@ -1709,6 +1709,7 @@ async function cancelWebCheckout(kind, key, token) {
     checkoutCreatedAt: null,
     checkoutExpiresAt: null,
     paypalOrderId: null,
+    paypalOtherOrderId: null,
     paypalAmount: null,
     paypalCurrency: null,
     paypalApprovalUrl: null,
@@ -1739,7 +1740,7 @@ async function createOtherPaymentOrder(kind, key, token) {
     throw new Error("This checkout was not started with Other Payment.");
   }
 
-  const expectedAmount = Number(await paypalUsdAmount(record)).toFixed(2);
+  const expectedAmount = Number(record.paypalAmount || await paypalUsdAmount(record)).toFixed(2);
   if (!Number.isFinite(Number(expectedAmount)) || Number(expectedAmount) <= 0) {
     throw new Error("The checkout amount is invalid. Contact Aura Cloud support.");
   }
@@ -1993,6 +1994,15 @@ export function startPayPalCallbackServer(client) {
         const key = String(url.searchParams.get("order") || "");
         const token = String(url.searchParams.get("token") || "");
         const record = await loadCheckoutSession(kind, key, token);
+        const paypalDisplayAmount = record.paymentMethodKey === "other"
+          ? Number(record.paypalAmount || await paypalUsdAmount(record)).toFixed(2)
+          : "";
+        if (record.paymentMethodKey === "other" && !record.paypalAmount) {
+          await updateCheckoutRecord(kind, key, record, {
+            paypalAmount: paypalDisplayAmount,
+            paypalCurrency: "USD"
+          });
+        }
         sendJson(res, 200, {
           orderNumber: String(record.orderNumber || record.renewalId || key),
           service: String(record.service || record.serviceName || record.serverName || "Aura Cloud Hosting Service"),
@@ -2005,6 +2015,7 @@ export function startPayPalCallbackServer(client) {
           discount: money(record.discount),
           total: money(record.total ?? (money(record.price) - money(record.discount))),
           paypalAmount: String(record.paypalAmount || ""),
+          paypalDisplayAmount,
           paypalCurrency: String(record.paypalCurrency || "USD"),
           ram: String(record.ram || "Not specified"),
           disk: String(record.disk || "Not specified"),
