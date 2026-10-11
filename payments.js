@@ -1675,6 +1675,84 @@ async function loadCheckoutSession(kind, key, token) {
   return record;
 }
 
+async function restoreDiscordPaymentPanel(kind, key, record) {
+  if (!paypalDiscordClient) throw new Error("Discord bot is not connected. Please try again from Discord.");
+
+  const isRenewal = kind === "renewal";
+  const embed = new EmbedBuilder()
+    .setTitle(isRenewal ? "🔄 Aura Cloud Renewal Payment" : "💳 Aura Cloud Payment")
+    .setDescription("Choose a payment method below. Your previous checkout was cancelled; no payment was confirmed by Aura Cloud.")
+    .addFields(
+      { name: isRenewal ? "Renewal" : "Order", value: "`" + String(key) + "`", inline: true },
+      { name: "Billing", value: /year|annual/i.test(String(record.billingCycle || record.billingPeriod || "")) ? "Yearly" : "Monthly", inline: true },
+      { name: "Total", value: formatMoney(record.total ?? record.price ?? 0, currencyOf(record)), inline: true },
+      ...(!isRenewal ? [{ name: "Discount", value: record.discountCode ? String(record.discountCode) + " — " + formatMoney(record.discount || 0, currencyOf(record)) + " off" : "None", inline: true }] : []),
+      { name: "Specifications", value: specsText(record) }
+    )
+    .setTimestamp();
+
+  const payload = {
+    content: null,
+    embeds: [embed],
+    components: [isRenewal ? buildRenewPaymentButtons(key) : buildPaymentButtons(key)]
+  };
+
+  if (record.paymentPanelChannelId && record.paymentPanelMessageId) {
+    try {
+      const channel = await paypalDiscordClient.channels.fetch(String(record.paymentPanelChannelId));
+      const message = channel?.messages ? await channel.messages.fetch(String(record.paymentPanelMessageId)) : null;
+      if (message) {
+        await message.edit(payload);
+        return "existing";
+      }
+    } catch (error) {
+      console.warn("Could not restore the original Discord payment panel; sending a new one instead:", error?.message || error);
+    }
+  }
+
+  await sendCustomerPaymentPanel(paypalDiscordClient, record.discordUserId, isRenewal ? "renew" : "buy", key);
+  return "new";
+}
+
+async function cancelWebCheckout(kind, key, token) {
+  const record = await loadCheckoutSession(kind, key, token);
+  if (record.status === "confirmed" || record.paymentVerified === true || record.paypalCaptureStatus === "COMPLETED") {
+    throw new Error("This payment is already confirmed. Do not cancel or pay again.");
+  }
+
+  await updateCheckoutRecord(kind, key, record, {
+    status: "awaiting_payment",
+    paymentMethod: null,
+    paymentMethodKey: null,
+    checkoutTokenHash: null,
+    checkoutToken: null,
+    checkoutKind: null,
+    checkoutCreatedAt: null,
+    checkoutExpiresAt: null,
+    paypalOrderId: null,
+    paypalAmount: null,
+    paypalCurrency: null,
+    paypalApprovalUrl: null,
+    checkoutUrl: null,
+    paypalCreatedAt: null,
+    paypalCaptureStatus: null,
+    paypalCaptureId: null,
+    paypalCapturedAmount: null,
+    paypalCapturedCurrency: null,
+    paypalCapturedAt: null,
+    checkoutCancelledAt: new Date().toISOString()
+  });
+
+  const panel = await restoreDiscordPaymentPanel(kind, key, record);
+  return {
+    cancelled: true,
+    panel,
+    message: panel === "existing"
+      ? "Checkout cancelled. Your Discord payment panel is ready to choose another method."
+      : "Checkout cancelled. A new payment selection panel has been sent to your Discord DM.",
+    returnUrl: "https://discord.com/channels/@me"
+  };
+}
 async function createCardFieldsOrder(kind, key, token) {
   if (!paypalConfigured()) throw new Error("Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env first.");
   const record = await loadCheckoutSession(kind, key, token);
@@ -1827,6 +1905,15 @@ export function startPayPalCallbackServer(client) {
           checkoutUrl: String(record.paypalApprovalUrl || record.checkoutUrl || ""),
           paypalClientId: process.env.PAYPAL_CLIENT_ID || null
         });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/checkout/cancel") {
+        const body = await readJsonBody(req);
+        const kind = String(body.kind || "buy");
+        const key = String(body.order || "");
+        const token = String(body.token || "");
+        sendJson(res, 200, await cancelWebCheckout(kind, key, token));
         return;
       }
 
@@ -3570,6 +3657,8 @@ export async function handleBuyInteraction(interaction) {
         paymentMethod: payment.label,
         paymentMethodKey: method,
         total,
+        paymentPanelMessageId: interaction.message.id,
+        paymentPanelChannelId: interaction.message.channelId,
         paymentSelectedAt: new Date().toISOString()
       });
 
@@ -3807,6 +3896,8 @@ export async function handleBuyInteraction(interaction) {
           paymentMethod: payment.label,
           paymentMethodKey: method,
           total,
+          paymentPanelMessageId: interaction.message.id,
+          paymentPanelChannelId: interaction.message.channelId,
           checkoutTokenHash: checkoutTokenHash(checkoutToken),
           checkoutToken: null,
           checkoutKind: "renewal",
@@ -3856,6 +3947,8 @@ export async function handleBuyInteraction(interaction) {
       paymentMethod: payment.label,
       paymentMethodKey: method,
       total,
+      paymentPanelMessageId: interaction.message.id,
+      paymentPanelChannelId: interaction.message.channelId,
       paymentSelectedAt: new Date().toISOString()
     });
     await interaction.update({
