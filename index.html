@@ -493,23 +493,82 @@
       box-shadow: 0 8px 24px #1769df18;
     }
 
-    .hosted-paypal-button {
-      width: 100%;
-      min-height: 46px;
-      padding: 0 2rem;
-      border: none;
-      border-radius: .25rem;
-      background: #ffd140;
-      color: #000;
-      font-family: "Helvetica Neue", Arial, sans-serif;
-      font-size: 1rem;
-      font-weight: 700;
-      line-height: 1.25rem;
-      cursor: pointer;
+    .paypal-amount-panel {
+      display: grid;
+      gap: 5px;
+      margin: 18px 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #0c0c0e;
+      text-align: center;
     }
 
-    .hosted-paypal-button:hover {
-      filter: brightness(.97);
+    .paypal-amount-panel span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .paypal-amount-panel strong {
+      color: var(--text);
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -.7px;
+    }
+
+    .paypal-amount-panel small {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .paypal-button-slot {
+      width: 100%;
+      min-height: 44px;
+    }
+
+    .paypal-button-slot iframe {
+      z-index: 1;
+    }
+
+    .payment-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 16px 0;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .9px;
+    }
+
+    .payment-divider::before,
+    .payment-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .card-logos {
+      display: flex;
+      justify-content: center;
+      margin-top: 14px;
+    }
+
+    .paypal-branding {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .paypal-branding img {
+      width: 65px;
+      height: auto;
     }
 
     .secure-note {
@@ -876,56 +935,57 @@
           </div>
         </div>
 
-        <!-- OFFICIAL PAYPAL HOSTED PAYMENT -->
+        <!-- PAYPAL SMART BUTTONS WITH ORDER-SPECIFIC AMOUNT -->
 
         <section id="other-payment-section" class="method-card">
           <div class="method-heading">
             <div class="method-icon">P</div>
             <div>
-              <strong>Other payment</strong>
-              <small>Official PayPal hosted checkout</small>
+              <strong>PayPal or debit / credit card</strong>
+              <small>Secure checkout powered by PayPal</small>
             </div>
           </div>
 
           <p class="description">
-            Review the order summary on the left, then continue to PayPal's official secure payment page.
-            PayPal may offer debit or credit card payment without requiring a PayPal account.
+            The exact amount for this order is shown below. PayPal checkout stays on this page,
+            alongside your order summary. You can use PayPal or choose the card option when available.
           </p>
 
-          <form
-            id="hosted-paypal-form"
-            action="https://www.paypal.com/ncp/payment/ZVWVGJB8UL2FW"
-            method="post"
-            target="_blank"
-            rel="noopener"
-            style="display:grid;justify-items:center;align-content:start;gap:.65rem"
-          >
-            <button class="hosted-paypal-button" type="submit">
-              දැන් මිලදී ගන්න
-            </button>
+          <div class="paypal-amount-panel">
+            <span>Amount payable</span>
+            <strong id="paypal-display-amount">$— USD</strong>
+            <small>Charged in USD. Your bank may apply its own currency conversion.</small>
+          </div>
+
+          <div id="paypal-buttons-error" class="error" role="alert"></div>
+          <div id="paypal-wallet-button" class="paypal-button-slot"></div>
+          <div class="payment-divider"><span>OR PAY WITH A CARD</span></div>
+          <div id="paypal-card-button" class="paypal-button-slot"></div>
+
+          <div class="card-logos">
             <img
               src="https://www.paypalobjects.com/images/Debit_Credit.svg"
               alt="Debit and credit cards accepted by PayPal"
               style="display:block;max-width:100%;height:auto"
             >
-            <div style="font-size:.75rem;color:var(--muted);text-align:center">
-              Powered by
-              <img
-                src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg"
-                alt="PayPal"
-                style="height:.875rem;vertical-align:middle"
-              >
-            </div>
-          </form>
+          </div>
+
+          <div class="paypal-branding">
+            Powered by
+            <img
+              src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg"
+              alt="PayPal"
+            >
+          </div>
 
           <p class="hint">
-            Important: this is a PayPal-hosted payment button. Confirm that its amount and currency
-            match the order total shown on the left before paying. Your Aura Cloud order remains
-            pending until payment is verified.
+            Your order is confirmed only after PayPal reports a completed payment and Aura Cloud
+            verifies the captured amount and order reference. Card availability depends on PayPal
+            account, buyer country, and transaction eligibility.
           </p>
 
           <div class="secure-note">
-            <b>●</b> Payment is processed on PayPal's website
+            <b>●</b> Secure payment processed by PayPal
           </div>
         </section>
 
@@ -1023,6 +1083,103 @@
         );
       }
 
+      function loadPayPalSdk(clientId) {
+        if (window.paypal && window.paypal.Buttons) return Promise.resolve();
+        if (window.__auraPayPalSdkPromise) return window.__auraPayPalSdkPromise;
+
+        window.__auraPayPalSdkPromise = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          const params = new URLSearchParams({
+            "client-id": clientId,
+            currency: "USD",
+            intent: "capture",
+            components: "buttons",
+            "enable-funding": "card",
+            "disable-funding": "paylater,venmo"
+          });
+          script.src = "https://www.paypal.com/sdk/js?" + params.toString();
+          script.async = true;
+          script.onload = () => {
+            if (window.paypal && window.paypal.Buttons) resolve();
+            else reject(new Error("PayPal checkout could not initialize. Please reload and try again."));
+          };
+          script.onerror = () => reject(new Error("Unable to load PayPal securely. Check your connection and try again."));
+          document.head.appendChild(script);
+        });
+
+        return window.__auraPayPalSdkPromise;
+      }
+
+      function renderPayPalButtons() {
+        const shared = {
+          style: { layout: "vertical", shape: "rect", label: "paypal", height: 45 },
+          createOrder: async () => {
+            clearError("paypal-buttons-error");
+            const result = await post("/api/paypal/other/create-order", { kind, order, token });
+            if (!result.orderID) throw new Error("PayPal did not create an order. Please try again.");
+            $("paypal-display-amount").textContent = money(result.amount, result.currency || "USD");
+            return result.orderID;
+          },
+          onApprove: async (data) => {
+            if (busy) return;
+            busy = true;
+            clearError("paypal-buttons-error");
+            $("notice-title").textContent = "Verifying your payment";
+            $("notice-note").textContent = "Please wait while Aura Cloud verifies the payment with PayPal.";
+            try {
+              const result = await post("/api/paypal/other/capture-order", {
+                kind, order, token, paypalOrderID: data.orderID
+              });
+              $("content").classList.add("hidden");
+              $("success").replaceChildren();
+              const title = document.createElement("strong");
+              title.textContent = "Payment confirmed";
+              const message = document.createElement("p");
+              message.textContent = result.message || "PayPal confirmed your payment. Your Aura Cloud order is complete.";
+              const link = document.createElement("a");
+              link.className = "button";
+              link.href = result.returnUrl || "https://discord.com/channels/@me";
+              link.rel = "noopener noreferrer";
+              link.textContent = "Return to Discord";
+              $("success").append(title, message, link);
+              $("success").style.display = "block";
+            } catch (error) {
+              showError(error.message || "PayPal could not confirm this payment. Please try again or contact Aura Cloud support.", "paypal-buttons-error");
+              $("notice-title").textContent = "Payment not confirmed";
+              $("notice-note").textContent = "Do not retry if your bank shows a charge. Contact Aura Cloud support so the transaction can be checked.";
+            } finally {
+              busy = false;
+            }
+          },
+          onCancel: () => {
+            $("notice-title").textContent = "Payment cancelled";
+            $("notice-note").textContent = "No payment was confirmed. You can try again or cancel checkout below.";
+          },
+          onError: (error) => {
+            console.error("PayPal button error:", error);
+            showError("PayPal could not complete this payment. Try again or choose another payment method. If your bank shows a charge, do not retry; contact Aura Cloud support.", "paypal-buttons-error");
+          }
+        };
+
+        window.paypal.Buttons({
+          ...shared,
+          fundingSource: window.paypal.FUNDING.PAYPAL
+        }).render("#paypal-wallet-button").catch(error => {
+          console.error("PayPal wallet button render failed:", error);
+          showError("PayPal wallet checkout is unavailable. Please try the card option or contact support.", "paypal-buttons-error");
+        });
+
+        window.paypal.Buttons({
+          ...shared,
+          fundingSource: window.paypal.FUNDING.CARD,
+          style: { layout: "vertical", shape: "rect", label: "pay", height: 45 }
+        }).render("#paypal-card-button").catch(error => {
+          console.error("PayPal card button render failed:", error);
+          $("paypal-card-button").classList.add("hidden");
+          $("paypal-card-button").setAttribute("aria-hidden", "true");
+        });
+      }
+
       async function loadCheckout() {
         if (
           !order ||
@@ -1089,27 +1246,19 @@
           );
         }
 
-        const hostedUrl = String(data.hostedPayPalUrl || "");
-        let parsedHostedUrl;
-        try {
-          parsedHostedUrl = new URL(hostedUrl);
-        } catch {
-          throw new Error("The official PayPal hosted payment link is missing. Contact Aura Cloud support.");
+        const paypalAmount = Number(data.paypalDisplayAmount);
+        if (!data.paypalClientId || !Number.isFinite(paypalAmount) || paypalAmount <= 0) {
+          throw new Error("PayPal checkout is not configured correctly. Please contact Aura Cloud support.");
         }
 
-        if (
-          parsedHostedUrl.protocol !== "https:" ||
-          parsedHostedUrl.hostname.toLowerCase() !== "www.paypal.com" ||
-          parsedHostedUrl.pathname.replace(/\/$/, "") !== "/ncp/payment/ZVWVGJB8UL2FW"
-        ) {
-          throw new Error("The PayPal hosted payment link failed security validation.");
-        }
-
-        $("hosted-paypal-form").action = parsedHostedUrl.href;
-        $("notice-title").textContent = "PayPal hosted checkout is ready";
+        $("paypal-display-amount").textContent = money(paypalAmount, "USD");
+        $("notice-title").textContent = "Secure PayPal checkout";
         $("notice-note").textContent =
-          "The item and total are shown on the left. Use the official PayPal button to continue; Aura Cloud confirms payment only after verifying it.";
-        put("method", "Other Payment — PayPal hosted checkout");
+          "The order total is shown below. Choose PayPal or debit/credit card to pay securely on this page.";
+        put("method", "Other Payment — PayPal / Debit or Credit Card");
+
+        await loadPayPalSdk(data.paypalClientId);
+        renderPayPalButtons();
 
         $("loading").classList.add("hidden");
         $("content").classList.remove("hidden");
