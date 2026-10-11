@@ -1598,9 +1598,14 @@ async function capturePayPalOrder(paypalOrderId) {
 function captureDetails(data) {
   const unit = data?.purchase_units?.[0];
   const capture = unit?.payments?.captures?.[0];
-  const amount = capture?.amount || unit?.payments?.authorizations?.[0]?.amount || unit?.amount;
+
+  // Only actual capture data can confirm a payment. Never fall back to an
+  // order status, authorization amount, or the originally requested amount.
+  const amount = capture?.amount;
+
   return {
-    status: capture?.status || data?.status || "",
+    status: capture?.status || "",
+    captureId: capture?.id || "",
     currency: amount?.currency_code || "",
     amount: amount?.value || "",
     customId: unit?.custom_id || unit?.reference_id || ""
@@ -1693,7 +1698,16 @@ async function createCardFieldsOrder(kind, key, token) {
         invoice_id: `${reference}-CARD-${Date.now()}`.slice(0, 127),
         description: `Aura Cloud Hosting ${record.service || record.serviceName || record.serverName || "hosting"} — ${reference}`.slice(0, 127),
         amount: { currency_code: "USD", value: expectedAmount }
-      }]
+      }],
+      payment_source: {
+        card: {
+          attributes: {
+            verification: {
+              method: "SCA_ALWAYS"
+            }
+          }
+        }
+      }
     })
   });
   const data = await response.json().catch(() => ({}));
@@ -1723,8 +1737,12 @@ async function captureCardFieldsOrder(kind, key, token, paypalOrderID) {
   const details = captureDetails(captured);
   const expectedAmount = Number(record.paypalAmount || await paypalUsdAmount(record)).toFixed(2);
   const expectedReference = String(record.orderNumber || record.renewalId || key);
-  const matches = details.status === "COMPLETED" && details.currency === "USD" &&
-    Number(details.amount).toFixed(2) === expectedAmount && details.customId === expectedReference;
+  const matches = details.status === "COMPLETED" &&
+    Boolean(details.captureId) &&
+    details.currency === "USD" &&
+    Number.isFinite(Number(details.amount)) &&
+    Number(details.amount).toFixed(2) === expectedAmount &&
+    details.customId === expectedReference;
 
   if (!matches) {
     await updateCheckoutRecord(kind, key, record, {
@@ -1856,8 +1874,12 @@ export function startPayPalCallbackServer(client) {
         const details = captureDetails(captured);
         const expectedUsd = Number(record.paypalAmount || await paypalUsdAmount(record)).toFixed(2);
         const expectedReference = String(record.orderNumber || record.renewalId || key);
-        const matches = details.status === "COMPLETED" && details.currency === "USD" &&
-          Number(details.amount).toFixed(2) === expectedUsd && details.customId === expectedReference;
+        const matches = details.status === "COMPLETED" &&
+          Boolean(details.captureId) &&
+          details.currency === "USD" &&
+          Number.isFinite(Number(details.amount)) &&
+          Number(details.amount).toFixed(2) === expectedUsd &&
+          details.customId === expectedReference;
         if (!matches) {
           await updateCheckoutRecord(kind, key, record, { paypalCaptureStatus: details.status || "NOT_COMPLETED", paypalCaptureCheckedAt: new Date().toISOString() });
           res.writeHead(402, { "Content-Type": "text/html; charset=utf-8" });
