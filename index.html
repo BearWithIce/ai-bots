@@ -974,6 +974,17 @@
           </div>
         </section>
 
+        <div id="cancel-checkout-wrap" style="margin-top:16px">
+          <button id="cancel-checkout" class="button secondary" type="button">
+            Cancel checkout and choose another method
+          </button>
+          <p class="hint">
+            Use this if you have not completed payment. If you believe you were charged,
+            do not cancel or pay again; contact Aura Cloud support.
+          </p>
+        </div>
+        <div id="cancel-checkout-error" class="error" role="alert"></div>
+
       </div>
     </section>
 
@@ -1378,6 +1389,39 @@
         }
       }
 
+      $("cancel-checkout").addEventListener("click", async () => {
+        if (busy) return;
+        const confirmed = window.confirm(
+          "Cancel this checkout and return to the payment selection panel in Discord? Only continue if you have not completed payment."
+        );
+        if (!confirmed) return;
+
+        busy = true;
+        $("cancel-checkout").disabled = true;
+        $("cancel-checkout").textContent = "Cancelling checkout…";
+        clearError("cancel-checkout-error");
+
+        try {
+          const result = await post("/api/checkout/cancel", { kind, order, token });
+          $("content").classList.add("hidden");
+          $("success").textContent = result.message || "Checkout cancelled. Return to Discord to choose another payment method."; 
+          $("success").style.display = "block";
+
+          const link = document.createElement("a");
+          link.className = "button";
+          link.href = result.returnUrl || "https://discord.com/channels/@me";
+          link.rel = "noopener noreferrer";
+          link.textContent = "Return to Discord";
+          $("success").appendChild(document.createElement("br"));
+          $("success").appendChild(link);
+        } catch (error) {
+          showError(error.message || "Could not cancel this checkout. Please contact Aura Cloud support.", "cancel-checkout-error");
+          $("cancel-checkout").disabled = false;
+          $("cancel-checkout").textContent = "Cancel checkout and choose another method";
+        } finally {
+          busy = false;
+        }
+      });
       $("show-card").addEventListener(
         "click",
         startCardFields
