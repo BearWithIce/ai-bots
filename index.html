@@ -1099,8 +1099,8 @@
 
         if (
           parsedHostedUrl.protocol !== "https:" ||
-          !/(^|\\.)paypal\\.com$/i.test(parsedHostedUrl.hostname) ||
-          parsedHostedUrl.pathname !== "/ncp/payment/ZVWVGJB8UL2FW"
+          parsedHostedUrl.hostname.toLowerCase() !== "www.paypal.com" ||
+          parsedHostedUrl.pathname.replace(/\/$/, "") !== "/ncp/payment/ZVWVGJB8UL2FW"
         ) {
           throw new Error("The PayPal hosted payment link failed security validation.");
         }
