@@ -67,7 +67,14 @@ const ADMIN_VERIFICATION_ROLE_IDS = [
    PAYMENT METHODS
 ============================================================ */
 
+const PAYPAL_HOSTED_PAYMENT_URL = "https://www.paypal.com/ncp/payment/ZVWVGJB8UL2FW";
+
 const PAYMENTS = {
+  other: {
+    label: "Other Payment",
+    emoji: "🌐",
+    detail: () => "Pay securely through Aura Cloud's hosted payment page."
+  },
   paypal: {
     label: "PayPal",
     emoji: "💸",
@@ -548,33 +555,19 @@ function buildPaymentButtons(orderId) {
   return new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
-        .setCustomId(
-          `buy_pay:${orderId}:paypal`
-        )
-        .setLabel(PAYMENTS.paypal.label)
-        .setEmoji(PAYMENTS.paypal.emoji)
+        .setCustomId(`buy_pay:${orderId}:other`)
+        .setLabel(PAYMENTS.other.label)
+        .setEmoji(PAYMENTS.other.emoji)
         .setStyle(ButtonStyle.Primary),
 
       new ButtonBuilder()
-        .setCustomId(
-          `buy_pay:${orderId}:bank`
-        )
+        .setCustomId(`buy_pay:${orderId}:bank`)
         .setLabel(PAYMENTS.bank.label)
         .setEmoji(PAYMENTS.bank.emoji)
         .setStyle(ButtonStyle.Secondary),
 
       new ButtonBuilder()
-        .setCustomId(
-          `buy_pay:${orderId}:card`
-        )
-        .setLabel(PAYMENTS.card.label)
-        .setEmoji(PAYMENTS.card.emoji)
-        .setStyle(ButtonStyle.Secondary),
-
-      new ButtonBuilder()
-        .setCustomId(
-          `buy_pay:${orderId}:ezcash`
-        )
+        .setCustomId(`buy_pay:${orderId}:ezcash`)
         .setLabel(PAYMENTS.ezcash.label)
         .setEmoji(PAYMENTS.ezcash.emoji)
         .setStyle(ButtonStyle.Success)
@@ -589,33 +582,19 @@ function buildRenewPaymentButtons(renewalId) {
   return new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
-        .setCustomId(
-          `renew_pay:${renewalId}:paypal`
-        )
-        .setLabel(PAYMENTS.paypal.label)
-        .setEmoji(PAYMENTS.paypal.emoji)
+        .setCustomId(`renew_pay:${renewalId}:other`)
+        .setLabel(PAYMENTS.other.label)
+        .setEmoji(PAYMENTS.other.emoji)
         .setStyle(ButtonStyle.Primary),
 
       new ButtonBuilder()
-        .setCustomId(
-          `renew_pay:${renewalId}:bank`
-        )
+        .setCustomId(`renew_pay:${renewalId}:bank`)
         .setLabel(PAYMENTS.bank.label)
         .setEmoji(PAYMENTS.bank.emoji)
         .setStyle(ButtonStyle.Secondary),
 
       new ButtonBuilder()
-        .setCustomId(
-          `renew_pay:${renewalId}:card`
-        )
-        .setLabel(PAYMENTS.card.label)
-        .setEmoji(PAYMENTS.card.emoji)
-        .setStyle(ButtonStyle.Secondary),
-
-      new ButtonBuilder()
-        .setCustomId(
-          `renew_pay:${renewalId}:ezcash`
-        )
+        .setCustomId(`renew_pay:${renewalId}:ezcash`)
         .setLabel(PAYMENTS.ezcash.label)
         .setEmoji(PAYMENTS.ezcash.emoji)
         .setStyle(ButtonStyle.Success)
@@ -1669,7 +1648,7 @@ async function loadCheckoutSession(kind, key, token) {
   if (!key || !token) throw new Error("This checkout link is incomplete. Start a new checkout in Discord.");
   const record = await getCheckoutRecord(kind, key);
   if (!validateCheckoutSession(record, token)) throw new Error("This checkout link is invalid or expired. Return to Discord and start a new checkout.");
-  if (!["paypal", "card"].includes(record.paymentMethodKey)) throw new Error("This order is not configured for automatic PayPal or card payment.");
+  if (!["paypal", "card", "other"].includes(record.paymentMethodKey)) throw new Error("This order is not configured for the hosted payment page.");
   if (record.status === "confirmed" || (kind === "buy" && record.paymentVerified === true)) throw new Error("This order has already been paid and confirmed.");
   if (record.status !== "payment_selected") throw new Error("This order is not waiting for payment.");
   return record;
@@ -3700,6 +3679,39 @@ export async function handleBuyInteraction(interaction) {
         )
         .setTimestamp();
 
+      if (method === "other") {
+        const checkoutToken = crypto.randomBytes(32).toString("hex");
+        const pageUrl = checkoutPageUrl("buy", order.orderNumber, checkoutToken);
+        await updateOrder(orderId, {
+          status: "payment_selected",
+          paymentMethod: payment.label,
+          paymentMethodKey: "other",
+          total,
+          checkoutTokenHash: checkoutTokenHash(checkoutToken),
+          checkoutToken: null,
+          checkoutKind: "buy",
+          checkoutCreatedAt: new Date().toISOString(),
+          checkoutExpiresAt: new Date(Date.now() + ORDER_TTL_MS).toISOString(),
+          paypalOrderId: null,
+          paypalAmount: null,
+          paypalCurrency: null,
+          paypalApprovalUrl: PAYPAL_HOSTED_PAYMENT_URL,
+          checkoutUrl: PAYPAL_HOSTED_PAYMENT_URL,
+          paymentSelectedAt: new Date().toISOString()
+        });
+        paymentEmbed.setDescription(
+          "Open the Aura Cloud checkout page to review your exact order total and use PayPal's official hosted payment button. After paying, return to this DM and upload your PayPal receipt or transaction proof. The order stays pending until Aura Cloud verifies the payment."
+        );
+        const checkoutRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setLabel("Open Other Payment")
+            .setStyle(ButtonStyle.Link)
+            .setURL(pageUrl)
+        );
+        await interaction.message.edit({ embeds: [paymentEmbed], components: [checkoutRow] });
+        return true;
+      }
+
       if (method === "paypal" || method === "card") {
         if (!paypalConfigured()) throw new Error("Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env first.");
         const checkoutToken = crypto.randomBytes(32).toString("hex");
@@ -3903,6 +3915,53 @@ export async function handleBuyInteraction(interaction) {
     }
 
     const total = money(renewal.total ?? renewal.price);
+    if (method === "other") {
+      try {
+        const checkoutToken = crypto.randomBytes(32).toString("hex");
+        const pageUrl = checkoutPageUrl("renewal", renewalId, checkoutToken);
+        await updateRenewalDb(renewalId, {
+          ...renewal,
+          status: "payment_selected",
+          paymentVerified: false,
+          paymentMethod: payment.label,
+          paymentMethodKey: "other",
+          total,
+          paymentPanelMessageId: interaction.message.id,
+          paymentPanelChannelId: interaction.message.channelId,
+          checkoutTokenHash: checkoutTokenHash(checkoutToken),
+          checkoutToken: null,
+          checkoutKind: "renewal",
+          checkoutCreatedAt: new Date().toISOString(),
+          checkoutExpiresAt: new Date(Date.now() + ORDER_TTL_MS).toISOString(),
+          paypalOrderId: null,
+          paypalAmount: null,
+          paypalCurrency: null,
+          paypalApprovalUrl: PAYPAL_HOSTED_PAYMENT_URL,
+          checkoutUrl: PAYPAL_HOSTED_PAYMENT_URL,
+          paymentSelectedAt: new Date().toISOString()
+        });
+        const embed = new EmbedBuilder()
+          .setTitle("🌐 Other Payment — Renewal")
+          .setDescription("Review the renewal total on the Aura Cloud checkout page and use PayPal's official hosted payment button. Return to this DM and upload your receipt; the renewal stays pending until Aura Cloud verifies the payment.")
+          .addFields(
+            { name: "Renewal", value: `${renewalId}`, inline: true },
+            { name: "Amount", value: formatMoney(total, currencyOf(renewal)), inline: true },
+            { name: "Service", value: renewal.serverName || renewal.serviceName || "Hosting Service", inline: true },
+            { name: "Billing", value: renewal.billingCycle === "yearly" ? "Yearly" : "Monthly", inline: true },
+            { name: "Specifications", value: specsText(renewal), inline: false }
+          )
+          .setTimestamp();
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setLabel("Open Other Payment").setStyle(ButtonStyle.Link).setURL(pageUrl)
+        );
+        await interaction.update({ embeds: [embed], components: [row] });
+      } catch (error) {
+        console.error("Renewal hosted checkout creation failed:", error);
+        await interaction.update({ content: "❌ Could not create the payment page. Please try again or contact Aura Cloud support.", embeds: [], components: [] });
+      }
+      return true;
+    }
+
     if (method === "paypal" || method === "card") {
       try {
         if (!paypalConfigured()) throw new Error("Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env first.");
