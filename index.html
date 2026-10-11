@@ -1,0 +1,1451 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080808">
+  <meta name="robots" content="noindex,nofollow">
+
+  <title>Aura Cloud — Secure Checkout</title>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080808;
+      --panel: #0d0d0f;
+      --panel-soft: #111113;
+      --line: #262329;
+      --text: #faf9fc;
+      --muted: #93909c;
+      --purple: #a78bfa;
+      --purple-dark: #7c3aed;
+      --green: #4ade80;
+      --red: #fb7185;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 20% 0%, #21153245, transparent 40%),
+        var(--bg);
+      color: var(--text);
+      font: 14px/1.6 Inter, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, a {
+      font: inherit;
+    }
+
+    button, a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .shell {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 34px 0 25px;
+    }
+
+    /* Brand header */
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 42px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .logo {
+      display: grid;
+      place-items: center;
+      width: 43px;
+      height: 43px;
+      flex: 0 0 43px;
+      border: 1px solid #b9a1ff42;
+      border-radius: 13px;
+      background: linear-gradient(145deg, #a78bfa, #7043ce);
+      color: white;
+      font-size: 24px;
+      font-weight: 900;
+      box-shadow: 0 0 28px #8b5cf61c;
+    }
+
+    .brand-name {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+    }
+
+    .brand-subtitle {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: .2px;
+    }
+
+    .security {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #0d0d0f;
+      color: #c9c5d0;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      white-space: nowrap;
+    }
+
+    .security-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 10px #4ade8060;
+    }
+
+    /* Main page heading */
+
+    .page-heading {
+      margin-bottom: 25px;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--purple);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .eyebrow-mark {
+      width: 20px;
+      height: 1px;
+      background: var(--purple);
+    }
+
+    .page-heading h1 {
+      margin: 10px 0 7px;
+      font-size: clamp(30px, 5vw, 43px);
+      line-height: 1.15;
+      letter-spacing: -1.8px;
+      font-weight: 800;
+    }
+
+    .page-heading p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* Two-column checkout */
+
+    .checkout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr);
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      overflow: hidden;
+      background: var(--panel);
+      box-shadow: 0 28px 90px #0007;
+    }
+
+    .order-column {
+      min-width: 0;
+      padding: 27px;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(160deg, #101012, #0b0b0d);
+    }
+
+    .payment-column {
+      min-width: 0;
+      padding: 27px;
+      background: #0d0d0f;
+    }
+
+    .column-title {
+      margin: 0 0 5px;
+      font-size: 17px;
+      font-weight: 750;
+      letter-spacing: -.35px;
+    }
+
+    .column-description {
+      margin: 0 0 23px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .section-label {
+      margin: 23px 0 11px;
+      color: #aaa5b3;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    /* Order reference */
+
+    .order-reference {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid #322841;
+      border-radius: 11px;
+      background: #15101d;
+    }
+
+    .reference-label {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .reference-value {
+      display: block;
+      margin-top: 3px;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .reference-badge {
+      flex: 0 0 auto;
+      padding: 5px 8px;
+      border: 1px solid #51406b;
+      border-radius: 6px;
+      color: #d8c8ff;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .8px;
+    }
+
+    /* Hosting specifications */
+
+    .specs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .spec {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid #252329;
+      border-radius: 9px;
+      background: #101012;
+    }
+
+    .spec label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .spec strong {
+      display: block;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    /* Price breakdown */
+
+    .price-summary {
+      padding: 5px 15px 15px;
+      border: 1px solid #28252d;
+      border-radius: 11px;
+      background: #101012;
+    }
+
+    .price-line {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 15px;
+      padding-top: 13px;
+      color: #d9d5df;
+      font-size: 12px;
+    }
+
+    .price-line span {
+      color: var(--muted);
+    }
+
+    .price-line strong {
+      text-align: right;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .discount-value {
+      color: var(--green) !important;
+    }
+
+    .total-line {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 12px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .total-label {
+      color: #e6e1eb;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .total-value {
+      font-size: clamp(25px, 3vw, 33px);
+      line-height: 1.2;
+      font-weight: 800;
+      letter-spacing: -1.3px;
+      overflow-wrap: anywhere;
+      text-align: right;
+    }
+
+    .charge-note {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+
+    /* Payment side */
+
+    .payment-heading {
+      margin-bottom: 22px;
+    }
+
+    .payment-heading h2 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      letter-spacing: -.4px;
+    }
+
+    .payment-heading p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 11px;
+      margin-bottom: 22px;
+      padding: 13px;
+      border: 1px solid #273c30;
+      border-radius: 10px;
+      background: #0e1711;
+    }
+
+    .notice-icon {
+      display: grid;
+      place-items: center;
+      width: 25px;
+      height: 25px;
+      flex: 0 0 25px;
+      border: 1px solid #28563a;
+      border-radius: 7px;
+      color: var(--green);
+      font-size: 13px;
+    }
+
+    .notice strong {
+      display: block;
+      margin-bottom: 2px;
+      color: #e5f7e9;
+      font-size: 12px;
+    }
+
+    .notice p {
+      margin: 0;
+      color: #a4b5a7;
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .method-card {
+      margin-top: 14px;
+      padding: 18px;
+      border: 1px solid #302d35;
+      border-radius: 12px;
+      background: linear-gradient(145deg, #141316, #0e0e10);
+    }
+
+    .method-heading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .method-icon {
+      display: grid;
+      place-items: center;
+      width: 43px;
+      height: 43px;
+      flex: 0 0 43px;
+      border: 1px solid #38313f;
+      border-radius: 10px;
+      background: #1a171f;
+      font-size: 19px;
+    }
+
+    .method-heading strong {
+      display: block;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .method-heading small {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .description {
+      margin: 0 0 16px;
+      color: #aaa5b1;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 47px;
+      padding: 12px 16px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      background: linear-gradient(105deg, #a78bfa, #8255dc);
+      color: #fff;
+      text-align: center;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 24px #8b5cf61a;
+      transition: filter .15s, transform .15s, border-color .15s;
+    }
+
+    .button:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .button:focus-visible {
+      outline: 2px solid var(--purple);
+      outline-offset: 3px;
+    }
+
+    .button:disabled {
+      opacity: .55;
+      cursor: wait;
+      transform: none;
+    }
+
+    .button.secondary {
+      margin-top: 10px;
+      border-color: #34313a;
+      background: #19181b;
+      box-shadow: none;
+    }
+
+    .button.paypal {
+      background: #1769df;
+      box-shadow: 0 8px 24px #1769df18;
+    }
+
+    .secure-note {
+      margin-top: 13px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 10px;
+    }
+
+    .secure-note b {
+      color: var(--green);
+    }
+
+    /* Hosted card fields */
+
+    #card-form {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    .card-logos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 0 0 20px;
+    }
+
+    .card-logos span {
+      padding: 4px 8px;
+      border: 1px solid #38343d;
+      border-radius: 5px;
+      background: #171619;
+      color: #d8d4de;
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: .4px;
+    }
+
+    .field {
+      margin-top: 15px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 7px;
+      color: #d9d4df;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .text-input,
+    .hosted-field {
+      width: 100%;
+      min-height: 46px;
+      padding: 12px;
+      border: 1px solid #34313a;
+      border-radius: 8px;
+      outline: none;
+      background: #0c0c0e;
+      color: var(--text);
+    }
+
+    .text-input:focus,
+    .hosted-field:focus-within {
+      border-color: #a78bfa;
+      box-shadow: 0 0 0 3px #a78bfa12;
+    }
+
+    .hosted-field {
+      padding: 13px;
+    }
+
+    .hint {
+      margin: 13px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.7;
+    }
+
+    .error,
+    .success {
+      display: none;
+      margin: 0 0 17px;
+      padding: 13px;
+      border-radius: 9px;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+    }
+
+    .error {
+      border: 1px solid #6c3343;
+      background: #211015;
+      color: #fecdd3;
+    }
+
+    .success {
+      border: 1px solid #24573d;
+      background: #0e1b13;
+      color: #bbf7d0;
+    }
+
+    .success .button {
+      margin-top: 12px;
+    }
+
+    .loading {
+      padding: 32px 0;
+      color: var(--muted);
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Footer */
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      margin-top: 21px;
+      color: #77737f;
+      font-size: 10px;
+    }
+
+    .footer-brand {
+      color: #aaa4b4;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .footer-note {
+      max-width: 650px;
+      text-align: right;
+    }
+
+    /* Mobile layout */
+
+    @media (max-width: 760px) {
+      .shell {
+        width: min(100% - 28px, 550px);
+        padding-top: 22px;
+      }
+
+      .header {
+        margin-bottom: 32px;
+      }
+
+      .checkout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .order-column {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .order-column,
+      .payment-column {
+        padding: 22px;
+      }
+
+      .total-value {
+        font-size: 29px;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .shell {
+        width: calc(100% - 22px);
+      }
+
+      .security {
+        padding: 8px;
+        font-size: 9px;
+        letter-spacing: .5px;
+      }
+
+      .logo {
+        width: 38px;
+        height: 38px;
+        flex-basis: 38px;
+      }
+
+      .brand-name {
+        font-size: 15px;
+      }
+
+      .order-column,
+      .payment-column {
+        padding: 17px;
+      }
+
+      .specs {
+        gap: 7px;
+      }
+
+      .spec {
+        padding: 10px;
+      }
+
+      .footer {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .footer-note {
+        text-align: left;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="shell">
+
+    <header class="header">
+      <div class="brand">
+        <div class="logo">A</div>
+        <div>
+          <div class="brand-name">Aura Cloud</div>
+          <span class="brand-subtitle">Next-Gen Cloud Hosting</span>
+        </div>
+      </div>
+
+      <div class="security">
+        <span class="security-dot"></span>
+        SECURE CHECKOUT
+      </div>
+    </header>
+
+    <section class="page-heading">
+      <div class="eyebrow">
+        <span class="eyebrow-mark"></span>
+        AURA CLOUD · PAYMENT PORTAL
+      </div>
+      <h1>Complete your order.</h1>
+      <p>Review your hosting plan and complete your payment securely.</p>
+    </section>
+
+    <div id="loading" class="loading">
+      Preparing your secure checkout…
+    </div>
+
+    <div id="error" class="error" role="alert"></div>
+    <div id="success" class="success" role="status"></div>
+
+    <section id="content" class="checkout hidden">
+
+      <!-- LEFT COLUMN: ORDER DETAILS -->
+
+      <div class="order-column">
+
+        <h2 class="column-title">Order summary</h2>
+        <p class="column-description">
+          Everything included in your Aura Cloud order.
+        </p>
+
+        <div class="order-reference">
+          <div>
+            <span class="reference-label">ORDER REFERENCE</span>
+            <strong id="order" class="reference-value">—</strong>
+          </div>
+          <span class="reference-badge">AURA CLOUD</span>
+        </div>
+
+        <h3 class="section-label">Your hosting plan</h3>
+
+        <div class="specs">
+          <div class="spec">
+            <label>Service</label>
+            <strong id="service">—</strong>
+          </div>
+
+          <div class="spec">
+            <label>Billing cycle</label>
+            <strong id="billing">—</strong>
+          </div>
+
+          <div class="spec">
+            <label>Memory / RAM</label>
+            <strong id="ram">—</strong>
+          </div>
+
+          <div class="spec">
+            <label>Storage / Disk</label>
+            <strong id="disk">—</strong>
+          </div>
+
+          <div class="spec">
+            <label>CPU allocation</label>
+            <strong id="cpu">—</strong>
+          </div>
+
+          <div class="spec">
+            <label>Server location</label>
+            <strong id="location">—</strong>
+          </div>
+
+          <div class="spec" style="grid-column:1/-1">
+            <label>Selected payment method</label>
+            <strong id="method">—</strong>
+          </div>
+        </div>
+
+        <h3 class="section-label">Payment breakdown</h3>
+
+        <div class="price-summary">
+          <div class="price-line">
+            <span>Plan price</span>
+            <strong id="price">—</strong>
+          </div>
+
+          <div class="price-line">
+            <span>Discount</span>
+            <strong id="discount" class="discount-value">—</strong>
+          </div>
+
+          <div class="total-line">
+            <div class="total-label">Total due</div>
+            <strong id="total" class="total-value">—</strong>
+          </div>
+
+          <div id="charge" class="charge-note"></div>
+        </div>
+
+        <div style="margin-top:17px;color:#88838f;font-size:10px;line-height:1.8">
+          Your service activates after Aura Cloud verifies your payment.
+          Please check the order details before continuing.
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN: PAYMENT -->
+
+      <div class="payment-column">
+
+        <div class="payment-heading">
+          <h2>Choose your payment</h2>
+          <p>Complete your transaction using the selected method.</p>
+        </div>
+
+        <div class="notice">
+          <div class="notice-icon">✓</div>
+          <div>
+            <strong id="notice-title">Your checkout is ready</strong>
+            <p id="notice-note">
+              Your payment is verified by Aura Cloud before your order
+              is confirmed.
+            </p>
+          </div>
+        </div>
+
+        <!-- PAYPAL CHECKOUT -->
+
+        <section id="paypal-section" class="method-card hidden">
+          <div class="method-heading">
+            <div class="method-icon">P</div>
+            <div>
+              <strong>PayPal checkout</strong>
+              <small>Pay with your PayPal account</small>
+            </div>
+          </div>
+
+          <p class="description">
+            Continue to PayPal to sign in and approve your payment.
+            PayPal will return you after you complete or cancel checkout.
+          </p>
+
+          <a
+            id="paypal-pay"
+            class="button paypal"
+            href="#"
+            rel="noopener noreferrer"
+          >
+            Continue to PayPal <span>→</span>
+          </a>
+
+          <div class="secure-note">
+            <b>●</b> Payment handled securely by PayPal
+          </div>
+        </section>
+
+        <!-- DEBIT / CREDIT CARD CHECKOUT -->
+
+        <section id="card-method" class="method-card hidden">
+          <div class="method-heading">
+            <div class="method-icon">▣</div>
+            <div>
+              <strong>Debit or credit card</strong>
+              <small>Secure PayPal-hosted card fields</small>
+            </div>
+          </div>
+
+          <p class="description">
+            Enter your card details through PayPal's secure payment fields.
+            Your card number and security code are not sent to Aura Cloud.
+            Guest card checkout depends on PayPal account eligibility.
+          </p>
+
+          <button id="show-card" class="button" type="button">
+            Continue to card details <span>→</span>
+          </button>
+
+          <div id="card-form" class="hidden">
+
+            <div class="card-logos">
+              <span>VISA</span>
+              <span>MASTERCARD</span>
+              <span>DEBIT</span>
+              <span>CREDIT</span>
+            </div>
+
+            <div class="field">
+              <label for="card-name">Name on card</label>
+              <input
+                id="card-name"
+                class="text-input"
+                autocomplete="cc-name"
+                placeholder="Cardholder name"
+                maxlength="120"
+              >
+            </div>
+
+            <div class="field">
+              <label>Card number</label>
+              <div id="card-number" class="hosted-field"></div>
+            </div>
+
+            <div class="field">
+              <label>Expiry date</label>
+              <div id="card-expiry" class="hosted-field"></div>
+            </div>
+
+            <div class="field">
+              <label>Security code</label>
+              <div id="card-cvv" class="hosted-field"></div>
+            </div>
+
+            <div id="card-error" class="error" role="alert"></div>
+
+            <button
+              id="card-pay"
+              class="button"
+              type="button"
+              disabled
+            >
+              Loading secure card fields…
+            </button>
+
+            <button
+              id="cancel-card"
+              class="button secondary"
+              type="button"
+            >
+              Cancel
+            </button>
+
+            <p class="hint">
+              By selecting Pay securely, you authorize the amount shown
+              above. Your payment is marked paid only after the server
+              verifies the captured payment amount.
+            </p>
+          </div>
+
+          <div class="secure-note">
+            <b>●</b> PayPal-hosted card fields · Aura Cloud does not store card data
+          </div>
+        </section>
+
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="footer-brand">AURA CLOUD™</div>
+      <div class="footer-note">
+        If you believe you were charged but this page shows no confirmation,
+        do not pay again. Contact Aura Cloud support.
+      </div>
+    </footer>
+
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const params = new URLSearchParams(location.search);
+      const kind = params.get("kind") || "buy";
+      const order = params.get("order") || "";
+      const token = params.get("token") || "";
+
+      const $ = id => document.getElementById(id);
+
+      let data = null;
+      let fields = null;
+      let sdkPromise = null;
+      let cardReady = false;
+      let busy = false;
+
+      const money = (value, currency) =>
+        new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: currency || "LKR",
+          maximumFractionDigits: 2
+        }).format(Number(value || 0));
+
+      const put = (id, value) => {
+        $(id).textContent =
+          value == null || value === ""
+            ? "Not specified"
+            : String(value);
+      };
+
+      function showError(message, target = "error") {
+        const el = $(target);
+        el.textContent =
+          message || "Something went wrong. Please try again.";
+        el.style.display = "block";
+      }
+
+      function clearError(target = "error") {
+        $(target).textContent = "";
+        $(target).style.display = "none";
+      }
+
+      async function parseResponse(response) {
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            result.error || `Request failed (${response.status}).`
+          );
+        }
+
+        return result;
+      }
+
+      async function post(url, body) {
+        return parseResponse(
+          await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            credentials: "same-origin",
+            cache: "no-store",
+            body: JSON.stringify(body)
+          })
+        );
+      }
+
+      async function loadCheckout() {
+        if (
+          !order ||
+          !token ||
+          !["buy", "renewal"].includes(kind)
+        ) {
+          throw new Error(
+            "This checkout link is incomplete or invalid. " +
+            "Return to Discord and start a new checkout."
+          );
+        }
+
+        const url =
+          `/api/checkout?kind=${encodeURIComponent(kind)}` +
+          `&order=${encodeURIComponent(order)}` +
+          `&token=${encodeURIComponent(token)}`;
+
+        data = await parseResponse(
+          await fetch(url, {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+            credentials: "same-origin"
+          })
+        );
+
+        const currency = data.currency || "LKR";
+
+        put("order", data.orderNumber);
+        put("service", data.service);
+
+        put(
+          "billing",
+          /year|annual/i.test(data.billingCycle || "")
+            ? "Yearly"
+            : "Monthly"
+        );
+
+        put("ram", data.ram);
+        put("disk", data.disk);
+        put("cpu", data.cpu);
+        put("location", data.location);
+        put("method", data.paymentMethod);
+        put("price", money(data.price, currency));
+
+        put(
+          "discount",
+          "− " + money(data.discount, currency)
+        );
+
+        put("total", money(data.total, currency));
+
+        if (data.paypalAmount) {
+          $("charge").textContent =
+            `PayPal charge: ${money(
+              data.paypalAmount,
+              data.paypalCurrency || "USD"
+            )}. The payment provider shows the final amount before you approve.`;
+        }
+
+        if (data.paymentMethodKey === "card") {
+          $("notice-title").textContent =
+            "Secure card checkout";
+
+          $("notice-note").textContent =
+            "Your card is processed by PayPal's secure Card Fields. " +
+            "Your card number and security code are never sent to Aura Cloud.";
+
+          $("card-method").classList.remove("hidden");
+
+        } else if (data.paymentMethodKey === "paypal") {
+          const href = String(data.checkoutUrl || "");
+          let parsed;
+
+          try {
+            parsed = new URL(href);
+          } catch {
+            throw new Error(
+              "The secure PayPal approval link is missing. " +
+              "Start a new checkout in Discord."
+            );
+          }
+
+          if (
+            parsed.protocol !== "https:" ||
+            !/(^|\.)paypal\.com$/i.test(parsed.hostname)
+          ) {
+            throw new Error(
+              "The PayPal approval link is invalid. " +
+              "Start a new checkout in Discord."
+            );
+          }
+
+          $("paypal-pay").href = parsed.href;
+          $("paypal-section").classList.remove("hidden");
+
+          $("notice-title").textContent =
+            "PayPal checkout is ready";
+
+          $("notice-note").textContent =
+            "Review your order and continue to PayPal to sign in " +
+            "and approve payment.";
+
+        } else {
+          throw new Error(
+            "This order does not have an automatic card or PayPal " +
+            "payment method selected."
+          );
+        }
+
+        $("loading").classList.add("hidden");
+        $("content").classList.remove("hidden");
+      }
+
+      function loadPayPalSdk(clientId) {
+        if (window.paypal?.CardFields) {
+          return Promise.resolve(window.paypal);
+        }
+
+        if (sdkPromise) {
+          return sdkPromise;
+        }
+
+        sdkPromise = new Promise((resolve, reject) => {
+          const src = new URL("https://www.paypal.com/sdk/js");
+
+          src.searchParams.set("client-id", clientId);
+          src.searchParams.set("components", "card-fields");
+          src.searchParams.set(
+            "currency",
+            data.paypalCurrency || "USD"
+          );
+          src.searchParams.set("intent", "capture");
+
+          const script = document.createElement("script");
+
+          script.src = src.toString();
+          script.async = true;
+
+          script.onload = () => {
+            if (window.paypal?.CardFields) {
+              resolve(window.paypal);
+            } else {
+              reject(
+                new Error(
+                  "PayPal Card Fields did not initialize."
+                )
+              );
+            }
+          };
+
+          script.onerror = () => {
+            reject(
+              new Error(
+                "Could not load PayPal's secure card fields. " +
+                "Check your connection and try again."
+              )
+            );
+          };
+
+          document.head.appendChild(script);
+        });
+
+        return sdkPromise;
+      }
+
+      async function startCardFields() {
+        clearError("card-error");
+
+        $("show-card").classList.add("hidden");
+        $("card-form").classList.remove("hidden");
+        $("card-pay").disabled = true;
+        $("card-pay").textContent =
+          "Loading secure card fields…";
+
+        try {
+          if (!data.paypalClientId) {
+            throw new Error(
+              "Card checkout is not configured. Add " +
+              "PAYPAL_CLIENT_ID to the bot's .env file and restart it."
+            );
+          }
+
+          const paypal = await loadPayPalSdk(
+            data.paypalClientId
+          );
+
+          fields = paypal.CardFields({
+            createOrder: async () => {
+              const result = await post(
+                "/api/paypal/create-order",
+                { kind, order, token }
+              );
+
+              if (!result.orderID) {
+                throw new Error(
+                  "PayPal did not return a payment order ID."
+                );
+              }
+
+              return result.orderID;
+            },
+
+            onApprove: async approval => {
+              $("card-pay").disabled = true;
+              $("card-pay").textContent =
+                "Verifying payment…";
+
+              const result = await post(
+                "/api/paypal/capture-order",
+                {
+                  kind,
+                  order,
+                  token,
+                  paypalOrderID: approval.orderID
+                }
+              );
+
+              if (result.paid !== true) {
+                throw new Error(
+                  result.message ||
+                  "Payment has not been verified yet."
+                );
+              }
+
+              $("card-form").classList.add("hidden");
+              $("card-method").classList.add("hidden");
+
+              $("success").textContent =
+                result.message ||
+                "Payment verified. Your invoice has been sent to Discord.";
+
+              $("success").style.display = "block";
+
+              const link = document.createElement("a");
+
+              link.className = "button";
+              link.href =
+                result.returnUrl ||
+                "https://discord.com/channels/@me";
+              link.rel = "noopener noreferrer";
+              link.textContent = "Return to Discord";
+
+              $("success").appendChild(
+                document.createElement("br")
+              );
+              $("success").appendChild(link);
+            },
+
+            onError: error => {
+              console.error(
+                "PayPal Card Fields error:",
+                error
+              );
+
+              showError(
+                "PayPal could not complete this card payment. " +
+                "Check the details or contact Aura Cloud support.",
+                "card-error"
+              );
+
+              $("card-pay").disabled = false;
+              $("card-pay").textContent = "Pay securely";
+            }
+          });
+
+          if (!fields.isEligible()) {
+            throw new Error(
+              "PayPal Card Fields is not enabled or eligible for " +
+              "this merchant account. Enable Advanced Credit and " +
+              "Debit Card Payments in PayPal. If PayPal does not " +
+              "offer this feature for your account, choose PayPal checkout instead."
+            );
+          }
+
+          const style = {
+            input: {
+              color: "#faf9fc",
+              "font-size": "16px",
+              "font-family": "Arial, sans-serif"
+            },
+            ".invalid": {
+              color: "#fb7185"
+            },
+            ":focus": {
+              color: "#ffffff"
+            }
+          };
+
+          await Promise.all([
+            fields.NumberField({ style }).render("#card-number"),
+            fields.ExpiryField({ style }).render("#card-expiry"),
+            fields.CVVField({ style }).render("#card-cvv")
+          ]);
+
+          cardReady = true;
+
+          $("card-pay").disabled = false;
+          $("card-pay").textContent =
+            `Pay ${money(
+              data.paypalAmount,
+              data.paypalCurrency || "USD"
+            )} securely`;
+
+        } catch (error) {
+          console.error(
+            "Card checkout setup failed:",
+            error
+          );
+
+          showError(
+            error.message ||
+            "Could not initialize card checkout.",
+            "card-error"
+          );
+
+          $("card-pay").disabled = true;
+          $("card-pay").textContent =
+            "Card checkout unavailable";
+        }
+      }
+
+      $("show-card").addEventListener(
+        "click",
+        startCardFields
+      );
+
+      $("cancel-card").addEventListener("click", () => {
+        $("card-form").classList.add("hidden");
+        $("show-card").classList.remove("hidden");
+        clearError("card-error");
+      });
+
+      $("card-pay").addEventListener(
+        "click",
+        async () => {
+          if (!cardReady || !fields || busy) {
+            return;
+          }
+
+          busy = true;
+          clearError("card-error");
+
+          $("card-pay").disabled = true;
+          $("card-pay").textContent =
+            "Processing securely…";
+
+          try {
+            await fields.submit({
+              cardholderName: $("card-name").value.trim()
+            });
+
+          } catch (error) {
+            console.error(
+              "Card payment submit failed:",
+              error
+            );
+
+            showError(
+              error.message ||
+              "Card payment could not be submitted. " +
+              "Check the details and try again.",
+              "card-error"
+            );
+
+            $("card-pay").disabled = false;
+            $("card-pay").textContent =
+              `Pay ${money(
+                data.paypalAmount,
+                data.paypalCurrency || "USD"
+              )} securely`;
+
+          } finally {
+            busy = false;
+          }
+        }
+      );
+
+      loadCheckout().catch(error => {
+        console.error("Checkout load failed:", error);
+
+        $("loading").classList.add("hidden");
+
+        showError(
+          error.message ||
+          "Unable to load checkout."
+        );
+      });
+
+    })();
+  </script>
+</body>
+</html>
