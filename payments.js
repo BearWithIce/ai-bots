@@ -1360,30 +1360,25 @@ function isLocalhostUrl(value) {
   }
 }
 
-function paypalReturnBase() {
-  const mode = String(process.env.PAYPAL_MODE || "sandbox").trim().toLowerCase();
-  const configured = String(process.env.PAYPAL_RETURN_BASE_URL || "").trim();
-  // Sandbox can be tested on the same computer without a public domain.
-  // For Live payments, PayPal must return to a publicly reachable HTTPS URL.
-  const base = (configured || (mode !== "live" ? "http://localhost:3030" : ""))
-    .replace(/\/+$/, "");
-  if (!base) throw new Error("PAYPAL_RETURN_BASE_URL is required for live payments and must be a public HTTPS URL.");
-  if (!base.startsWith("https://") && !(mode !== "live" && isLocalhostUrl(base))) {
-    throw new Error("PAYPAL_RETURN_BASE_URL must use HTTPS. HTTP is allowed only for localhost while PAYPAL_MODE=sandbox.");
+const PUBLIC_CHECKOUT_BASE_URL = "https://checkout.auracloud.cloud";
+
+function configuredPublicBase(value) {
+  const configured = String(value || "").trim().replace(/\/+$/, "");
+  // This bot runs on a remote host. Never send customers a localhost link:
+  // their browser would open their own computer, not the bot's checkout server.
+  if (!configured || isLocalhostUrl(configured)) return PUBLIC_CHECKOUT_BASE_URL;
+  if (!configured.startsWith("https://")) {
+    throw new Error("Checkout and PayPal return URLs must use HTTPS.");
   }
-  return base;
+  return configured;
+}
+
+function paypalReturnBase() {
+  return configuredPublicBase(process.env.PAYPAL_RETURN_BASE_URL);
 }
 
 function paypalCheckoutBase() {
-  // Localhost is for same-computer Sandbox tests only. Public customers need HTTPS.
-  const mode = String(process.env.PAYPAL_MODE || "sandbox").trim().toLowerCase();
-  const base = String(process.env.PAYPAL_CHECKOUT_BASE_URL || (mode !== "live" ? "http://localhost:3030" : ""))
-    .trim().replace(/\/+$/, "");
-  if (!base) throw new Error("Set PAYPAL_CHECKOUT_BASE_URL to your public HTTPS checkout URL for live payments.");
-  if (!base.startsWith("https://") && !(mode !== "live" && isLocalhostUrl(base))) {
-    throw new Error("PAYPAL_CHECKOUT_BASE_URL must use HTTPS. Localhost HTTP is allowed only for Sandbox testing.");
-  }
-  return base;
+  return configuredPublicBase(process.env.PAYPAL_CHECKOUT_BASE_URL);
 }
 
 function checkoutTokenHash(token) {
