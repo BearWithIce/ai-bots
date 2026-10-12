@@ -2259,13 +2259,13 @@ async function finalizeOrder(
   }
 
   if (
-    current.status !==
-      "payment_selected" &&
-    current.status !==
-      "awaiting_admin_verification"
+    current.status !== "awaiting_admin_verification" &&
+    !(current.status === "payment_selected" &&
+      (current.paymentVerified === true ||
+       current.paypalCaptureStatus === "COMPLETED"))
   ) {
     throw new Error(
-      "This order has not completed email verification and payment selection yet."
+      "This order has not had its payment verified yet. Verify the uploaded receipt or confirm a completed PayPal capture before finalizing."
     );
   }
 
@@ -2692,13 +2692,13 @@ async function finalizeRenewal(
   }
 
   if (
-    renewal.status !==
-      "payment_selected" &&
-    renewal.status !==
-      "awaiting_admin_verification"
+    renewal.status !== "awaiting_admin_verification" &&
+    !(renewal.status === "payment_selected" &&
+      (renewal.paymentVerified === true ||
+       renewal.paypalCaptureStatus === "COMPLETED"))
   ) {
     throw new Error(
-      "This renewal is not waiting for payment verification."
+      "This renewal has not had its payment verified yet. Verify the uploaded receipt or confirm a completed PayPal capture before finalizing."
     );
   }
 
