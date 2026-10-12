@@ -1,0 +1,15 @@
+{
+  "name": "aura-cloud-ai-bots",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aura Cloud bot payment and PDFKit invoice module",
+  "type": "module",
+  "dependencies": {
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.4.7",
+    "firebase-admin": "^13.0.2",
+    "googleapis": "^144.0.0",
+    "nodemailer": "^6.10.0",
+    "pdfkit": "^0.17.2"
+  }
+}
