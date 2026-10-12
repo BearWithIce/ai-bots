@@ -123,16 +123,16 @@ Choose the currency, billing cycle, and payment status below. LKR is the default
 
 function applyExplicitInvoiceAmounts(extracted, explanation) {
   const text = String(explanation || "");
-  const amountPattern = String.raw`([\\d,]+(?:\\.\\d{1,2})?)`;
+  const amountPattern = String.raw`([\d,]+(?:\.\d{1,2})?)`;
 
   // Explicit amounts in the command take priority over AI guesses.
   // Example: "Ranuga bought unlimited data 3 user V2Ray for 350 LKR, discount was 150 LKR".
   const priceMatch = text.match(new RegExp(
-    String.raw`\\b(?:for|price(?:d)?(?:\\s+at)?|cost(?:s)?(?:\\s+of)?)\\s*(?:(?:LKR|Rs\\.?|USD|\\$)\\s*)?${amountPattern}\\s*(?:LKR|Rs\\.?|USD|\\$)?\\b`,
+    String.raw`\b(?:for|price(?:d)?(?:\s+at)?|cost(?:s)?(?:\s+of)?)\s*(?:(?:LKR|Rs\.?|USD|\$)\s*)?${amountPattern}\s*(?:LKR|Rs\.?|USD|\$)?\b`,
     "i"
   ));
   const discountMatch = text.match(new RegExp(
-    String.raw`\\bdiscount(?:\\s+(?:was|is|of))?\\s*[:=]?\\s*(?:(?:LKR|Rs\\.?|USD|\\$)\\s*)?${amountPattern}\\s*(?:LKR|Rs\\.?|USD|\\$)?\\b`,
+    String.raw`\bdiscount(?:\s+(?:was|is|of))?\s*[:=]?\s*(?:(?:LKR|Rs\.?|USD|\$)\s*)?${amountPattern}\s*(?:LKR|Rs\.?|USD|\$)?\b`,
     "i"
   ));
 
@@ -147,22 +147,22 @@ function applyExplicitInvoiceAmounts(extracted, explanation) {
 
   let description = text;
   description = description.replace(new RegExp(
-    String.raw`\\bdiscount(?:\\s+(?:was|is|of))?\\s*[:=]?\\s*(?:(?:LKR|Rs\\.?|USD|\\$)\\s*)?${amountPattern}\\s*(?:LKR|Rs\\.?|USD|\\$)?\\b`,
+    String.raw`\bdiscount(?:\s+(?:was|is|of))?\s*[:=]?\s*(?:(?:LKR|Rs\.?|USD|\$)\s*)?${amountPattern}\s*(?:LKR|Rs\.?|USD|\$)?\b`,
     "ig"
   ), " ");
   description = description.replace(new RegExp(
-    String.raw`\\b(?:for|price(?:d)?(?:\\s+at)?|cost(?:s)?(?:\\s+of)?)\\s*(?:(?:LKR|Rs\\.?|USD|\\$)\\s*)?${amountPattern}\\s*(?:LKR|Rs\\.?|USD|\\$)?\\b`,
+    String.raw`\b(?:for|price(?:d)?(?:\s+at)?|cost(?:s)?(?:\s+of)?)\s*(?:(?:LKR|Rs\.?|USD|\$)\s*)?${amountPattern}\s*(?:LKR|Rs\.?|USD|\$)?\b`,
     "ig"
   ), " ");
   description = description
-    .replace(/\\b(?:LKR|Rs\\.?|USD)\\s*[\\d,]+(?:\\.\\d{1,2})?\\b/gi, " ")
-    .replace(/\\s+([,.])/g, "$1")
-    .replace(/[\\s,;:.-]+$/g, "")
-    .replace(/\\s{2,}/g, " ")
+    .replace(/\b(?:LKR|Rs\.?|USD)\s*[\d,]+(?:\.\d{1,2})?\b/gi, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .replace(/[\s,;:.-]+$/g, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
 
   // Keep the purchased service as the line description, not the buyer or payment wording.
-  const boughtMatch = description.match(/^.+?\\s+bought\\s+(.+)$/i);
+  const boughtMatch = description.match(/^.+?\s+bought\s+(.+)$/i);
   if (boughtMatch) description = boughtMatch[1].trim();
   if (description) {
     extracted.description = description.charAt(0).toUpperCase() + description.slice(1);
