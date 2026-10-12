@@ -1,217 +1,372 @@
-import PDFDocument from "pdfkit";
-import fs from "node:fs";
-import path from "node:path";
+import ExcelJS from "exceljs";
+import path from "path";
+import fs from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
-const OUTPUT_DIR = path.resolve(process.env.PDF_OUTPUT_DIR || "./generated_invoices");
+const execFileAsync = promisify(execFile);
 
-const number = (value, fallback = 0) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
+const templatePath = path.resolve(
+  "./templates/aura-cloud-invoice.xlsx"
+);
 
-const text = (value, fallback = "—") => {
-  if (value === null || value === undefined) return fallback;
-  const result = String(value).trim();
-  return result || fallback;
-};
+const outputDir = path.resolve("./output");
 
-const money = (value, currency = "LKR") =>
-  `${currency} ${number(value).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
+/*
+============================================================
+LIBREOFFICE PATH
+============================================================
+*/
 
-function field(doc, label, value, x, y, valueWidth = 190) {
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#6B7280")
-    .text(label, x, y, { width: 94 });
-  doc.font("Helvetica").fontSize(8.5).fillColor("#111827")
-    .text(text(value), x + 96, y, { width: valueWidth });
+const libreOfficePath =
+  process.platform === "win32"
+    ? "C:\\Program Files\\LibreOffice\\program\\soffice.exe"
+    : "libreoffice";
+
+/*
+============================================================
+MONEY HELPER
+============================================================
+*/
+
+function money(value) {
+  const number = Number(value || 0);
+
+  return Number.isFinite(number)
+    ? number
+    : 0;
 }
 
-function ensureRoom(doc, height = 70) {
-  if (doc.y + height > doc.page.height - doc.page.margins.bottom) {
-    doc.addPage();
+function cleanDescription(value) {
+  return String(value || "Hosting service")
+    .replace(/\b(?:for|at|price(?:d)?(?:\s+at)?|cost(?:s)?(?:\s+of)?)\s*(?:USD\s*|LKR\s*|Rs\.?\s*|\$\s*)[\d,]+(?:\.\d{1,2})?\b/gi, " ")
+    .replace(/\b(?:for|at|price(?:d)?(?:\s+at)?|cost(?:s)?(?:\s+of)?)\s*[\d,]+(?:\.\d{1,2})?\s*\$/gi, " ")
+    .replace(/\b(?:USD|LKR|Rs\.?)\s*[\d,]+(?:\.\d{1,2})?\b/gi, " ")
+    .replace(/\$\s*[\d,]+(?:\.\d{1,2})?\b/g, " ")
+    .replace(/\b[\d,]+(?:\.\d{1,2})?\s*(?:USD|LKR|Rs\.?)/gi, " ")
+    .replace(/\b[\d,]+(?:\.\d{1,2})?\s*\$/g, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,;:.\-]+|[\s,;:.\-]+$/g, "")
+    .trim() || "Hosting service";
+}
+
+const LKR_FORMAT = '_-[$Rs.-849]* #,##0.00_-;\\-[$Rs.-849]* #,##0.00_-;_-[$Rs.-849]* "-"??_-;_-@_-';
+const USD_FORMAT = '"$"#,##0.00;[Red]-"$"#,##0.00;"$"0.00';
+
+/*
+============================================================
+CREATE INVOICE FILES
+============================================================
+*/
+
+export async function createInvoiceFiles(data) {
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(
+      "Invoice template not found: templates/aura-cloud-invoice.xlsx"
+    );
   }
-}
 
-export function calculateInvoice(data = {}) {
-  const quantity = Math.max(1, number(data.quantity, 1));
-  const unitPrice = Math.max(0, number(data.unitPrice));
-  const discount = Math.max(0, number(data.discount));
-  const tax = Math.max(0, number(data.tax));
-  const subtotal = quantity * unitPrice;
-  const lineTotal = Math.max(0, subtotal - discount);
-  const total = lineTotal + tax;
-
-  return { quantity, unitPrice, discount, tax, subtotal, lineTotal, total };
-}
-
-/**
- * PDFKit invoice renderer. Does not require LibreOffice, Excel, or a system
- * office suite. Keeps the { xlsxPath, pdfPath } return shape expected by
- * payments.js; xlsxPath is null because this generator intentionally creates
- * a PDF only.
- */
-export async function createInvoiceFiles(data = {}) {
-  const invoiceNumber = text(data.invoiceNumber, "").replace(/[^0-9]/g, "");
-  if (!invoiceNumber) {
-    throw new Error("Cannot create invoice: invoiceNumber must contain digits.");
-  }
-
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-  const pdfPath = path.join(OUTPUT_DIR, `${invoiceNumber}.pdf`);
-  const currency = text(data.currency, "LKR");
-  const customer = data.customer && typeof data.customer === "object" ? data.customer : {};
-  const totals = calculateInvoice({
-    quantity: data.quantity,
-    unitPrice: data.unitPrice,
-    discount: data.discount,
-    tax: data.tax
+  fs.mkdirSync(outputDir, {
+    recursive: true
   });
 
-  const subtotal = number(data.subtotal, totals.subtotal);
-  const discount = number(data.discount, totals.discount);
-  const tax = number(data.tax, totals.tax);
-  const lineTotal = number(data.lineTotal, totals.lineTotal);
-  const total = number(data.total, totals.total);
+  const workbook = new ExcelJS.Workbook();
 
-  await new Promise((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: "A4",
-      margins: { top: 42, right: 46, bottom: 48, left: 46 },
-      info: {
-        Title: `Aura Cloud Invoice ${invoiceNumber}`,
-        Author: "Aura Cloud Hosting",
-        Subject: "Hosting service invoice"
-      }
-    });
+  await workbook.xlsx.readFile(
+    templatePath
+  );
 
-    const output = fs.createWriteStream(pdfPath);
-    let settled = false;
-    const fail = error => {
-      if (!settled) {
-        settled = true;
-        reject(error);
-      }
-    };
+  const sheet =
+    workbook.getWorksheet(
+      "Aura Cloud Invoice"
+    ) || workbook.worksheets[0];
 
-    output.once("error", fail);
-    doc.once("error", fail);
-    output.once("finish", () => {
-      if (!settled) {
-        settled = true;
-        resolve();
-      }
-    });
+  if (!sheet) {
+    throw new Error(
+      "No worksheet found in invoice template."
+    );
+  }
 
-    doc.pipe(output);
+  /*
+  ============================================================
+  SAFE CELL SETTER
+  ============================================================
+  */
 
-    const left = doc.page.margins.left;
-    const right = doc.page.width - doc.page.margins.right;
-    const width = right - left;
+  const set = (cell, value) => {
+    sheet.getCell(cell).value =
+      value ?? "";
+  };
 
-    // Branded Aura Cloud header.
-    doc.rect(0, 0, doc.page.width, 112).fill("#080711");
-    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(21)
-      .text("AURA CLOUD", left, 34);
-    doc.fillColor("#A78BFA").font("Helvetica").fontSize(8.5)
-      .text("NEXT-GEN CLOUD HOSTING", left, 62);
-    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(22)
-      .text("INVOICE", 340, 35, { width: right - 340, align: "right" });
-    doc.fillColor("#D1D5DB").font("Helvetica").fontSize(9)
-      .text(`# ${invoiceNumber}`, 340, 66, { width: right - 340, align: "right" });
+  /*
+  ============================================================
+  CUSTOMER INFORMATION
+  ============================================================
+  */
 
-    let y = 136;
-    doc.fillColor("#4C1D95").font("Helvetica-Bold").fontSize(9)
-      .text("BILL TO", left, y);
-    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(12)
-      .text(text(customer.name, text(data.customerName, "Customer")), left, y + 17, { width: 235 });
+  set(
+    "B5",
+    data.customer?.name
+  );
 
-    let customerY = y + 37;
-    for (const value of [
-      customer.email || data.customerEmail,
-      customer.company,
-      customer.address,
-      customer.phone
-    ]) {
-      if (value && String(value).trim()) {
-        doc.font("Helvetica").fontSize(8.5).fillColor("#4B5563")
-          .text(String(value), left, customerY, { width: 238 });
-        customerY += 13;
-      }
+  set(
+    "B6",
+    data.customer?.email
+  );
+
+  set(
+    "B7",
+    data.customer?.company
+  );
+
+  set(
+    "B8",
+    data.customer?.address ||
+      data.customer?.phone
+  );
+
+  /*
+  ============================================================
+  INVOICE INFORMATION
+  ============================================================
+  */
+
+  // Invoice number is numeric only.
+  const invoiceNumber = String(
+    data.invoiceNumber || ""
+  ).replace(/\D/g, "");
+
+  set(
+    "G4",
+    invoiceNumber
+  );
+
+  set(
+    "G5",
+    data.purchaseDate
+  );
+
+  set(
+    "G6",
+    data.expiryDate
+  );
+
+  const paymentStatus = String(
+    data.paymentStatus || (String(data.status || "").toLowerCase() === "paid" ? "Paid" : "Not Paid")
+  ).toLowerCase() === "paid" ? "Paid" : "Not Paid";
+
+  set(
+    "G7",
+    paymentStatus
+  );
+
+  /*
+  ============================================================
+  PRODUCT / SERVICE
+  ============================================================
+  */
+
+  const description = cleanDescription(data.description);
+  set("A12", description);
+  set("B12", data.quantity);
+
+  const cycleText = String(data.billingCycle || "Monthly").trim().toLowerCase();
+  const billingCycle = /year|annual/.test(cycleText)
+    ? "Yearly"
+    : /one[- ]?time/.test(cycleText)
+      ? "One-time"
+      : "Monthly";
+  set("C12", billingCycle);
+
+  // Keep the full description readable in both Excel and the PDF export.
+  const descriptionCell = sheet.getCell("A12");
+  descriptionCell.alignment = { ...descriptionCell.alignment, wrapText: true, vertical: "top" };
+  descriptionCell.font = { ...descriptionCell.font, size: 10 };
+  sheet.getColumn("A").width = Math.max(sheet.getColumn("A").width || 28, 32);
+  const estimatedLines = Math.max(1, Math.ceil(description.length / 38));
+  sheet.getRow(12).height = Math.min(120, Math.max(30, estimatedLines * 15));
+  for (const cellAddress of ["B12", "C12", "D12", "E12", "F12", "G12"]) {
+    const cell = sheet.getCell(cellAddress);
+    cell.alignment = { ...cell.alignment, vertical: "top", wrapText: true };
+  }
+
+  set(
+    "D12",
+    data.unitPrice
+  );
+
+  set(
+    "E12",
+    data.discount
+  );
+
+  set(
+    "F12",
+    data.tax
+  );
+
+  set(
+    "G12",
+    data.lineTotal
+  );
+
+  // Apply currency only to this generated invoice workbook. The original template stays unchanged.
+  const currency = String(data.currency || "LKR").trim().toUpperCase() === "USD" ? "USD" : "LKR";
+  const amountFormat = currency === "USD" ? USD_FORMAT : LKR_FORMAT;
+  for (const col of ["D", "E", "F", "G"]) {
+    sheet.getCell(`${col}11`).value = String(sheet.getCell(`${col}11`).value || "").replace(/\((?:LKR|USD|RS\.?)\)/ig, `(${currency})`);
+  }
+  for (let row = 12; row <= 21; row++) {
+    for (const col of ["D", "E", "F", "G"]) {
+      sheet.getCell(`${col}${row}`).numFmt = amountFormat;
     }
+  }
+  for (const cell of ["G23", "G24", "G25"]) {
+    sheet.getCell(cell).numFmt = amountFormat;
+  }
 
-    const metaX = 333;
-    field(doc, "Invoice number", invoiceNumber, metaX, y, 170);
-    field(doc, "Issue date", data.purchaseDate || data.createdAt, metaX, y + 19, 170);
-    field(doc, "Service expiry", data.expiryDate, metaX, y + 38, 170);
-    field(doc, "Payment status", data.paymentStatus || data.status || "Paid", metaX, y + 57, 170);
+  /*
+  ============================================================
+  SUMMARY
+  ============================================================
+  */
 
-    y = Math.max(customerY + 19, y + 88);
-    ensureRoom(doc, 120);
+  set(
+    "G23",
+    data.subtotal
+  );
 
-    // Invoice item table.
-    doc.roundedRect(left, y, width, 27, 4).fill("#F3F0FF");
-    doc.fillColor("#4C1D95").font("Helvetica-Bold").fontSize(8);
-    doc.text("DESCRIPTION", left + 8, y + 9, { width: 210 });
-    doc.text("QTY", left + 224, y + 9, { width: 28, align: "right" });
-    doc.text("BILLING", left + 262, y + 9, { width: 63 });
-    doc.text("UNIT PRICE", left + 329, y + 9, { width: 72, align: "right" });
-    doc.text("TOTAL", right - 62, y + 9, { width: 54, align: "right" });
+  set(
+    "G24",
+    data.tax
+  );
 
-    y += 27;
-    const description = text(data.description, text(data.service || data.serverName, "Hosting service"));
-    doc.font("Helvetica").fontSize(8.5);
-    const descriptionHeight = doc.heightOfString(description, { width: 200 });
-    const rowHeight = Math.max(38, descriptionHeight + 18);
-    ensureRoom(doc, rowHeight + 130);
+  set(
+    "G25",
+    data.total
+  );
 
-    doc.fillColor("#111827").font("Helvetica").fontSize(8.5)
-      .text(description, left + 8, y + 10, { width: 200 });
-    doc.text(String(totals.quantity), left + 224, y + 10, { width: 28, align: "right" });
-    doc.text(text(data.billingCycle || data.duration), left + 262, y + 10, { width: 63 });
-    doc.text(money(totals.unitPrice, currency), left + 329, y + 10, { width: 72, align: "right" });
-    doc.text(money(lineTotal, currency), right - 70, y + 10, { width: 62, align: "right" });
-    doc.strokeColor("#E5E7EB").lineWidth(0.7)
-      .moveTo(left, y + rowHeight).lineTo(right, y + rowHeight).stroke();
+  /*
+  ============================================================
+  FILE PATHS
+  ============================================================
+  */
 
-    y += rowHeight + 24;
-    ensureRoom(doc, 140);
+  const xlsxPath = path.join(
+    outputDir,
+    `${invoiceNumber}.xlsx`
+  );
 
-    const summaryX = right - 224;
-    const valueX = right - 106;
-    const summaryLine = (label, amount, strong = false) => {
-      doc.font(strong ? "Helvetica-Bold" : "Helvetica")
-        .fontSize(strong ? 11 : 9)
-        .fillColor(strong ? "#4C1D95" : "#374151")
-        .text(label, summaryX, y, { width: 112 });
-      doc.text(money(amount, currency), valueX, y, { width: 100, align: "right" });
-      y += strong ? 25 : 19;
-    };
+  const pdfPath = path.join(
+    outputDir,
+    `${invoiceNumber}.pdf`
+  );
 
-    summaryLine("Subtotal", subtotal);
-    if (discount > 0) summaryLine("Discount", -discount);
-    if (tax > 0) summaryLine("Tax", tax);
-    doc.strokeColor("#C4B5FD").lineWidth(1)
-      .moveTo(summaryX, y - 4).lineTo(right, y - 4).stroke();
-    summaryLine("TOTAL PAID", total, true);
+  /*
+  ============================================================
+  WRITE EXCEL FILE
+  ============================================================
+  */
 
-    y += 22;
-    ensureRoom(doc, 65);
-    doc.fillColor("#6B7280").font("Helvetica").fontSize(8)
-      .text("Thank you for choosing Aura Cloud Hosting.", left, y, { width, align: "center" });
-    doc.text("This invoice was generated electronically.", left, y + 14, { width, align: "center" });
-    doc.end();
-  });
+  await workbook.xlsx.writeFile(
+    xlsxPath
+  );
 
-  if (!fs.existsSync(pdfPath) || fs.statSync(pdfPath).size === 0) {
-    throw new Error("PDF invoice generation failed: output file is missing or empty.");
+  /*
+  ============================================================
+  CONVERT EXCEL -> PDF
+  ============================================================
+  */
+
+  try {
+    await execFileAsync(
+      libreOfficePath,
+      [
+        "--headless",
+        "--convert-to",
+        "pdf",
+        "--outdir",
+        outputDir,
+        xlsxPath
+      ]
+    );
+  } catch (error) {
+    console.error(
+      "LibreOffice error:",
+      error
+    );
+
+    throw new Error(
+      `PDF conversion failed. LibreOffice executable was not found or conversion failed.\nPath: ${libreOfficePath}`
+    );
+  }
+
+  /*
+  ============================================================
+  VERIFY PDF
+  ============================================================
+  */
+
+  if (!fs.existsSync(pdfPath)) {
+    throw new Error(
+      "PDF conversion completed but no PDF file was created."
+    );
   }
 
   return {
-    invoiceNumber,
-    xlsxPath: null,
-    pdfPath,
-    totals: { ...totals, subtotal, discount, tax, lineTotal, total }
+    xlsxPath,
+    pdfPath
+  };
+}
+
+/*
+============================================================
+CALCULATE INVOICE
+============================================================
+*/
+
+export function calculateInvoice(invoiceData) {
+  const quantity = Math.max(
+    1,
+    money(invoiceData.quantity)
+  );
+
+  const unitPrice = money(
+    invoiceData.unitPrice
+  );
+
+  const discount = Math.max(
+    0,
+    money(invoiceData.discount)
+  );
+
+  const tax = Math.max(
+    0,
+    money(invoiceData.tax)
+  );
+
+  // Price before discount/tax
+  const subtotal =
+    quantity * unitPrice;
+
+  // Discount applies to the whole line
+  const lineTotal = Math.max(
+    0,
+    subtotal - discount
+  );
+
+  // Final invoice total
+  const total =
+    lineTotal + tax;
+
+  return {
+    quantity,
+    unitPrice,
+    discount,
+    tax,
+    subtotal,
+    lineTotal,
+    total
   };
 }
