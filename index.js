@@ -92,13 +92,23 @@ const pendingInvoices = new Map();
 
 function invoiceDraftContent(draft) {
   const currency = draft.currency || "LKR";
+  const totals = calculateInvoice({
+    quantity: draft.quantity ?? 1,
+    unitPrice: draft.unitPrice ?? 0,
+    discount: draft.discount ?? 0,
+    tax: draft.tax ?? 0
+  });
   return `# 📄 Invoice Draft
 
 **Description:** ${draft.description || "Not specified"}
 
 **Quantity:** ${draft.quantity || 1}
 
-**Unit Price:** ${currency} ${draft.unitPrice ?? 0}
+**Unit Price:** ${currency} ${Number(draft.unitPrice ?? 0).toLocaleString()}
+
+**Discount:** ${currency} ${Number(draft.discount ?? 0).toLocaleString()}
+
+**Total After Discount:** ${currency} ${Number(totals.total ?? 0).toLocaleString()}
 
 **Billing Cycle:** ${draft.billingCycle || "Monthly"}
 
@@ -108,7 +118,56 @@ function invoiceDraftContent(draft) {
 
 **Currency:** ${currency}
 
-Choose the currency, billing cycle, and payment status below. LKR is the default. The description excludes the price.`;
+Choose the currency, billing cycle, and payment status below. LKR is the default. Any discount detected in the `!inv` message is included above.`;
+}
+
+function applyExplicitInvoiceAmounts(extracted, explanation) {
+  const text = String(explanation || "");
+  const amountPattern = String.raw`([\\d,]+(?:\\.\\d{1,2})?)`;
+
+  // Explicit amounts in the command take priority over AI guesses.
+  // Example: "Ranuga bought unlimited data 3 user V2Ray for 350 LKR, discount was 150 LKR".
+  const priceMatch = text.match(new RegExp(
+    String.raw`\\b(?:for|price(?:d)?(?:\\s+at)?|cost(?:s)?(?:\\s+of)?)\\s*(?:(?:LKR|Rs\\.?|USD|\\$)\\s*)?${amountPattern}\\s*(?:LKR|Rs\\.?|USD|\\$)?\\b`,
+    "i"
+  ));
+  const discountMatch = text.match(new RegExp(
+    String.raw`\\bdiscount(?:\\s+(?:was|is|of))?\\s*[:=]?\\s*(?:(?:LKR|Rs\\.?|USD|\\$)\\s*)?${amountPattern}\\s*(?:LKR|Rs\\.?|USD|\\$)?\\b`,
+    "i"
+  ));
+
+  if (priceMatch) {
+    extracted.unitPrice = Number(priceMatch[1].replace(/,/g, ""));
+  }
+  if (discountMatch) {
+    extracted.discount = Number(discountMatch[1].replace(/,/g, ""));
+  } else if (extracted.discount == null) {
+    extracted.discount = 0;
+  }
+
+  let description = text;
+  description = description.replace(new RegExp(
+    String.raw`\\bdiscount(?:\\s+(?:was|is|of))?\\s*[:=]?\\s*(?:(?:LKR|Rs\\.?|USD|\\$)\\s*)?${amountPattern}\\s*(?:LKR|Rs\\.?|USD|\\$)?\\b`,
+    "ig"
+  ), " ");
+  description = description.replace(new RegExp(
+    String.raw`\\b(?:for|price(?:d)?(?:\\s+at)?|cost(?:s)?(?:\\s+of)?)\\s*(?:(?:LKR|Rs\\.?|USD|\\$)\\s*)?${amountPattern}\\s*(?:LKR|Rs\\.?|USD|\\$)?\\b`,
+    "ig"
+  ), " ");
+  description = description
+    .replace(/\\b(?:LKR|Rs\\.?|USD)\\s*[\\d,]+(?:\\.\\d{1,2})?\\b/gi, " ")
+    .replace(/\\s+([,.])/g, "$1")
+    .replace(/[\\s,;:.-]+$/g, "")
+    .replace(/\\s{2,}/g, " ")
+    .trim();
+
+  // Keep the purchased service as the line description, not the buyer or payment wording.
+  const boughtMatch = description.match(/^.+?\\s+bought\\s+(.+)$/i);
+  if (boughtMatch) description = boughtMatch[1].trim();
+  if (description) {
+    extracted.description = description.charAt(0).toUpperCase() + description.slice(1);
+  }
+  return extracted;
 }
 
 function invoiceDraftComponents(pendingId, draft) {
@@ -1472,6 +1531,8 @@ client.on(
             await extractInvoiceData(
               explanation
             );
+
+          applyExplicitInvoiceAmounts(extracted, explanation);
 
           extracted.purchaseDate =
             resolveDate(
