@@ -13,15 +13,15 @@ function money(value) {
 
 function cleanDescription(value) {
   return String(value || "Hosting service")
-    .replace(/\\b(?:for|at|price(?:d)?(?:\\s+at)?|cost(?:s)?(?:\\s+of)?)\\s*(?:USD\\s*|LKR\\s*|Rs\\.?\\s*|\\$\\s*)[\\d,]+(?:\\.\\d{1,2})?\\b/gi, " ")
-    .replace(/\\b(?:for|at|price(?:d)?(?:\\s+at)?|cost(?:s)?(?:\\s+of)?)\\s*[\\d,]+(?:\\.\\d{1,2})?\\s*\\$/gi, " ")
-    .replace(/\\b(?:USD|LKR|Rs\\.?)\\s*[\\d,]+(?:\\.\\d{1,2})?\\b/gi, " ")
-    .replace(/\\$\\s*[\\d,]+(?:\\.\\d{1,2})?\\b/g, " ")
-    .replace(/\\b[\\d,]+(?:\\.\\d{1,2})?\\s*(?:USD|LKR|Rs\\.?)/gi, " ")
-    .replace(/\\b[\\d,]+(?:\\.\\d{1,2})?\\s*\\$/g, " ")
-    .replace(/\\s+([,.])/g, "$1")
-    .replace(/\\s{2,}/g, " ")
-    .replace(/^[\\s,;:.\\-]+|[\\s,;:.\\-]+$/g, "")
+    .replace(/\b(?:for|at|price(?:d)?(?:\s+at)?|cost(?:s)?(?:\s+of)?)\s*(?:USD\s*|LKR\s*|Rs\.?\s*|\$\s*)[\d,]+(?:\.\d{1,2})?\b/gi, " ")
+    .replace(/\b(?:for|at|price(?:d)?(?:\s+at)?|cost(?:s)?(?:\s+of)?)\s*[\d,]+(?:\.\d{1,2})?\s*\$/gi, " ")
+    .replace(/\b(?:USD|LKR|Rs\.?)\s*[\d,]+(?:\.\d{1,2})?\b/gi, " ")
+    .replace(/\$\s*[\d,]+(?:\.\d{1,2})?\b/g, " ")
+    .replace(/\b[\d,]+(?:\.\d{1,2})?\s*(?:USD|LKR|Rs\.?)/gi, " ")
+    .replace(/\b[\d,]+(?:\.\d{1,2})?\s*\$/g, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,;:.\-]+|[\s,;:.\-]+$/g, "")
     .trim() || "Hosting service";
 }
 
@@ -68,7 +68,7 @@ function drawRule(doc, y, left = 48, right = 547, color = "#e5e5ef") {
  * or LibreOffice conversion is required.
  */
 export async function createInvoiceFiles(data = {}) {
-  const invoiceNumber = String(data.invoiceNumber || "").replace(/\\D/g, "");
+  const invoiceNumber = String(data.invoiceNumber || "").replace(/\D/g, "");
   if (!invoiceNumber) {
     throw new Error("A numeric invoice number is required to generate an invoice.");
   }
