@@ -1,364 +1,235 @@
-import ExcelJS from "exceljs";
-import path from "path";
-import fs from "fs";
-import { execFile } from "child_process";
-import { promisify } from "util";
+import PDFDocument from "pdfkit";
+import fs from "node:fs";
+import path from "node:path";
 
-const execFileAsync = promisify(execFile);
-
-const templatePath = path.resolve(
-  "./templates/aura-cloud-invoice.xlsx"
+const outputDir = path.resolve(
+  process.env.PDF_OUTPUT_DIR || "./output"
 );
 
-const outputDir = path.resolve("./output");
-
-/*
-============================================================
-LIBREOFFICE PATH
-============================================================
-*/
-
-const libreOfficePath =
-  process.platform === "win32"
-    ? "C:\\Program Files\\LibreOffice\\program\\soffice.exe"
-    : "libreoffice";
-
-/*
-============================================================
-MONEY HELPER
-============================================================
-*/
-
 function money(value) {
-  const number = Number(value || 0);
-
-  return Number.isFinite(number)
-    ? number
-    : 0;
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function cleanDescription(value) {
   return String(value || "Hosting service")
-    .replace(/\b(?:for|at|price(?:d)?(?:\s+at)?|cost(?:s)?(?:\s+of)?)\s*(?:USD\s*|LKR\s*|Rs\.?\s*|\$\s*)[\d,]+(?:\.\d{1,2})?\b/gi, " ")
-    .replace(/\b(?:for|at|price(?:d)?(?:\s+at)?|cost(?:s)?(?:\s+of)?)\s*[\d,]+(?:\.\d{1,2})?\s*\$/gi, " ")
-    .replace(/\b(?:USD|LKR|Rs\.?)\s*[\d,]+(?:\.\d{1,2})?\b/gi, " ")
-    .replace(/\$\s*[\d,]+(?:\.\d{1,2})?\b/g, " ")
-    .replace(/\b[\d,]+(?:\.\d{1,2})?\s*(?:USD|LKR|Rs\.?)/gi, " ")
-    .replace(/\b[\d,]+(?:\.\d{1,2})?\s*\$/g, " ")
-    .replace(/\s+([,.])/g, "$1")
-    .replace(/\s{2,}/g, " ")
-    .replace(/^[\s,;:.\-]+|[\s,;:.\-]+$/g, "")
+    .replace(/\\b(?:for|at|price(?:d)?(?:\\s+at)?|cost(?:s)?(?:\\s+of)?)\\s*(?:USD\\s*|LKR\\s*|Rs\\.?\\s*|\\$\\s*)[\\d,]+(?:\\.\\d{1,2})?\\b/gi, " ")
+    .replace(/\\b(?:for|at|price(?:d)?(?:\\s+at)?|cost(?:s)?(?:\\s+of)?)\\s*[\\d,]+(?:\\.\\d{1,2})?\\s*\\$/gi, " ")
+    .replace(/\\b(?:USD|LKR|Rs\\.?)\\s*[\\d,]+(?:\\.\\d{1,2})?\\b/gi, " ")
+    .replace(/\\$\\s*[\\d,]+(?:\\.\\d{1,2})?\\b/g, " ")
+    .replace(/\\b[\\d,]+(?:\\.\\d{1,2})?\\s*(?:USD|LKR|Rs\\.?)/gi, " ")
+    .replace(/\\b[\\d,]+(?:\\.\\d{1,2})?\\s*\\$/g, " ")
+    .replace(/\\s+([,.])/g, "$1")
+    .replace(/\\s{2,}/g, " ")
+    .replace(/^[\\s,;:.\\-]+|[\\s,;:.\\-]+$/g, "")
     .trim() || "Hosting service";
 }
 
-const LKR_FORMAT = '_-[$Rs.-849]* #,##0.00_-;\\-[$Rs.-849]* #,##0.00_-;_-[$Rs.-849]* "-"??_-;_-@_-';
-const USD_FORMAT = '"$"#,##0.00;[Red]-"$"#,##0.00;"$"0.00';
+function currencyCode(value) {
+  return String(value || "LKR").trim().toUpperCase() === "USD"
+    ? "USD"
+    : "LKR";
+}
+
+function formatMoney(value, currency) {
+  const amount = money(value);
+  return currency === "USD"
+    ? "$" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : "LKR " + amount.toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function billingCycleLabel(value) {
+  const cycle = String(value || "Monthly").trim().toLowerCase();
+  if (/year|annual/.test(cycle)) return "Yearly";
+  if (/one[- ]?time/.test(cycle)) return "One-time";
+  return "Monthly";
+}
+
+function safeText(value, fallback = "—") {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+}
+
+function drawLabelValue(doc, label, value, x, y, width = 235) {
+  doc.font("Helvetica-Bold").fontSize(8).fillColor("#73738a")
+    .text(label.toUpperCase(), x, y, { width });
+  doc.font("Helvetica").fontSize(10).fillColor("#171725")
+    .text(safeText(value), x, y + 13, { width, lineGap: 2 });
+}
+
+function drawRule(doc, y, left = 48, right = 547, color = "#e5e5ef") {
+  doc.moveTo(left, y).lineTo(right, y).lineWidth(0.7).strokeColor(color).stroke();
+}
 
 /*
-============================================================
-CREATE INVOICE FILES
-============================================================
-*/
-
-export async function createInvoiceFiles(data) {
-  if (!fs.existsSync(templatePath)) {
-    throw new Error(
-      "Invoice template not found: templates/aura-cloud-invoice.xlsx"
-    );
+ * PDFKit-only invoice generation.
+ * Kept compatible with payments.js: createInvoiceFiles() returns
+ * { xlsxPath, pdfPath }, with xlsxPath set to null because no spreadsheet
+ * or LibreOffice conversion is required.
+ */
+export async function createInvoiceFiles(data = {}) {
+  const invoiceNumber = String(data.invoiceNumber || "").replace(/\\D/g, "");
+  if (!invoiceNumber) {
+    throw new Error("A numeric invoice number is required to generate an invoice.");
   }
 
-  fs.mkdirSync(outputDir, {
-    recursive: true
+  await fs.promises.mkdir(outputDir, { recursive: true });
+
+  const pdfPath = path.join(outputDir, invoiceNumber + ".pdf");
+  const currency = currencyCode(data.currency);
+  const description = cleanDescription(data.description);
+  const quantity = Math.max(1, money(data.quantity || 1));
+  const unitPrice = money(data.unitPrice);
+  const discount = Math.max(0, money(data.discount));
+  const tax = Math.max(0, money(data.tax));
+  const calculated = calculateInvoice({
+    quantity,
+    unitPrice,
+    discount,
+    tax
   });
-
-  const workbook = new ExcelJS.Workbook();
-
-  await workbook.xlsx.readFile(
-    templatePath
-  );
-
-  const sheet =
-    workbook.getWorksheet(
-      "Aura Cloud Invoice"
-    ) || workbook.worksheets[0];
-
-  if (!sheet) {
-    throw new Error(
-      "No worksheet found in invoice template."
-    );
-  }
-
-  /*
-  ============================================================
-  SAFE CELL SETTER
-  ============================================================
-  */
-
-  const set = (cell, value) => {
-    sheet.getCell(cell).value =
-      value ?? "";
-  };
-
-  /*
-  ============================================================
-  CUSTOMER INFORMATION
-  ============================================================
-  */
-
-  set(
-    "B5",
-    data.customer?.name
-  );
-
-  set(
-    "B6",
-    data.customer?.email
-  );
-
-  set(
-    "B7",
-    data.customer?.company
-  );
-
-  set(
-    "B8",
-    data.customer?.address ||
-      data.customer?.phone
-  );
-
-  /*
-  ============================================================
-  INVOICE INFORMATION
-  ============================================================
-  */
-
-  // Invoice number is numeric only.
-  const invoiceNumber = String(
-    data.invoiceNumber || ""
-  ).replace(/\D/g, "");
-
-  set(
-    "G4",
-    invoiceNumber
-  );
-
-  set(
-    "G5",
-    data.purchaseDate
-  );
-
-  set(
-    "G6",
-    data.expiryDate
-  );
-
-  const paymentStatus = String(
+  const subtotal = money(data.subtotal ?? calculated.subtotal);
+  const lineTotal = money(data.lineTotal ?? calculated.lineTotal);
+  const total = money(data.total ?? calculated.total);
+  const status = String(
     data.paymentStatus || (String(data.status || "").toLowerCase() === "paid" ? "Paid" : "Not Paid")
   ).toLowerCase() === "paid" ? "Paid" : "Not Paid";
 
-  set(
-    "G7",
-    paymentStatus
-  );
+  const doc = new PDFDocument({
+    size: "A4",
+    margins: { top: 46, bottom: 46, left: 48, right: 48 },
+    info: {
+      Title: "Aura Cloud Hosting Invoice " + invoiceNumber,
+      Author: "Aura Cloud Hosting",
+      Subject: "Hosting service invoice"
+    },
+    bufferPages: true
+  });
 
-  /*
-  ============================================================
-  PRODUCT / SERVICE
-  ============================================================
-  */
+  const stream = fs.createWriteStream(pdfPath);
+  const finished = new Promise((resolve, reject) => {
+    stream.on("finish", resolve);
+    stream.on("error", reject);
+    doc.on("error", reject);
+  });
+  doc.pipe(stream);
 
-  const description = cleanDescription(data.description);
-  set("A12", description);
-  set("B12", data.quantity);
+  // Brand header
+  doc.rect(0, 0, doc.page.width, 145).fill("#090816");
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(23)
+    .text("AURA CLOUD", 48, 43, { characterSpacing: 1.2 });
+  doc.fillColor("#b9b5ff").font("Helvetica").fontSize(9)
+    .text("HOSTING  •  NEXT-GEN CLOUD HOSTING", 49, 73);
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(26)
+    .text("INVOICE", 365, 43, { width: 180, align: "right" });
+  doc.fillColor("#d8d6f4").font("Helvetica").fontSize(9)
+    .text("#" + invoiceNumber, 365, 78, { width: 180, align: "right" });
+  doc.fillColor(status === "Paid" ? "#8ff0c5" : "#ffd28b").font("Helvetica-Bold").fontSize(9)
+    .text(status.toUpperCase(), 365, 96, { width: 180, align: "right" });
 
-  const cycleText = String(data.billingCycle || "Monthly").trim().toLowerCase();
-  const billingCycle = /year|annual/.test(cycleText)
-    ? "Yearly"
-    : /one[- ]?time/.test(cycleText)
-      ? "One-time"
-      : "Monthly";
-  set("C12", billingCycle);
+  let y = 171;
+  drawLabelValue(doc, "Bill to", data.customer?.name, 48, y, 235);
+  drawLabelValue(doc, "Invoice date", data.purchaseDate, 330, y, 215);
+  y += 47;
+  drawLabelValue(doc, "Email", data.customer?.email, 48, y, 235);
+  drawLabelValue(doc, "Service expiry", data.expiryDate, 330, y, 215);
+  y += 47;
+  drawLabelValue(doc, "Company", data.customer?.company, 48, y, 235);
+  drawLabelValue(doc, "Payment status", status, 330, y, 215);
+  y += 47;
+  drawLabelValue(doc, "Address / contact", data.customer?.address || data.customer?.phone, 48, y, 235);
+  drawLabelValue(doc, "Billing cycle", billingCycleLabel(data.billingCycle), 330, y, 215);
 
-  // Keep the full description readable in both Excel and the PDF export.
-  const descriptionCell = sheet.getCell("A12");
-  descriptionCell.alignment = { ...descriptionCell.alignment, wrapText: true, vertical: "top" };
-  descriptionCell.font = { ...descriptionCell.font, size: 10 };
-  sheet.getColumn("A").width = Math.max(sheet.getColumn("A").width || 28, 32);
-  const estimatedLines = Math.max(1, Math.ceil(description.length / 38));
-  sheet.getRow(12).height = Math.min(120, Math.max(30, estimatedLines * 15));
-  for (const cellAddress of ["B12", "C12", "D12", "E12", "F12", "G12"]) {
-    const cell = sheet.getCell(cellAddress);
-    cell.alignment = { ...cell.alignment, vertical: "top", wrapText: true };
+  y += 54;
+  drawRule(doc, y, 48, 547, "#c9c7e8");
+
+  // Table header
+  const tableTop = y + 13;
+  doc.roundedRect(48, tableTop, 499, 30, 5).fill("#f0effb");
+  doc.fillColor("#4a4770").font("Helvetica-Bold").fontSize(8);
+  doc.text("DESCRIPTION", 60, tableTop + 10, { width: 190 });
+  doc.text("QTY", 255, tableTop + 10, { width: 35, align: "right" });
+  doc.text("UNIT PRICE", 300, tableTop + 10, { width: 80, align: "right" });
+  doc.text("DISCOUNT", 385, tableTop + 10, { width: 70, align: "right" });
+  doc.text("TOTAL", 460, tableTop + 10, { width: 75, align: "right" });
+
+  const rowY = tableTop + 43;
+  doc.fillColor("#1b1a2b").font("Helvetica-Bold").fontSize(9)
+    .text(description, 60, rowY, { width: 184, lineGap: 3 });
+  doc.font("Helvetica").fontSize(9).fillColor("#3c3a50")
+    .text(String(quantity), 255, rowY, { width: 35, align: "right" })
+    .text(formatMoney(unitPrice, currency), 300, rowY, { width: 80, align: "right" })
+    .text(formatMoney(discount, currency), 385, rowY, { width: 70, align: "right" })
+    .text(formatMoney(lineTotal, currency), 460, rowY, { width: 75, align: "right" });
+
+  const descriptionHeight = doc.heightOfString(description, { width: 184, font: "Helvetica-Bold", fontSize: 9, lineGap: 3 });
+  y = rowY + Math.max(36, descriptionHeight + 20);
+  drawRule(doc, y, 48, 547);
+
+  // Totals
+  const totalsX = 335;
+  const totalsValueX = 435;
+  y += 18;
+  const totalRow = (label, value, bold = false, color = "#242238") => {
+    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 11 : 9).fillColor(color)
+      .text(label, totalsX, y, { width: 95 });
+    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 11 : 9).fillColor(color)
+      .text(value, totalsValueX, y, { width: 110, align: "right" });
+    y += bold ? 27 : 21;
+  };
+  totalRow("Subtotal", formatMoney(subtotal, currency));
+  totalRow("Tax", formatMoney(tax, currency));
+  doc.roundedRect(325, y - 2, 222, 34, 5).fill("#090816");
+  totalRow("TOTAL DUE", formatMoney(total, currency), true, "#ffffff");
+
+  y += 24;
+  if (y > 690) {
+    doc.addPage();
+    y = 60;
+  }
+  doc.fillColor("#6f6d83").font("Helvetica-Bold").fontSize(8)
+    .text("NOTES", 48, y);
+  doc.fillColor("#55536a").font("Helvetica").fontSize(9)
+    .text("Thank you for choosing Aura Cloud Hosting. Please keep this invoice for your records.", 48, y + 14, {
+      width: 499,
+      lineGap: 3
+    });
+
+  // Footer on every page (currently one page for typical invoices).
+  const pages = doc.bufferedPageRange();
+  for (let i = pages.start; i < pages.start + pages.count; i++) {
+    doc.switchToPage(i);
+    doc.moveTo(48, 790).lineTo(547, 790).lineWidth(0.6).strokeColor("#e5e5ef").stroke();
+    doc.fillColor("#77758a").font("Helvetica").fontSize(8)
+      .text("Aura Cloud Hosting  •  auracloud.cloud", 48, 802, { width: 300 });
+    doc.text("Invoice " + invoiceNumber, 390, 802, { width: 157, align: "right" });
   }
 
-  set(
-    "D12",
-    data.unitPrice
-  );
+  doc.end();
+  await finished;
 
-  set(
-    "E12",
-    data.discount
-  );
-
-  set(
-    "F12",
-    data.tax
-  );
-
-  set(
-    "G12",
-    data.lineTotal
-  );
-
-  // Apply currency only to this generated invoice workbook. The original template stays unchanged.
-  const currency = String(data.currency || "LKR").trim().toUpperCase() === "USD" ? "USD" : "LKR";
-  const amountFormat = currency === "USD" ? USD_FORMAT : LKR_FORMAT;
-  for (const col of ["D", "E", "F", "G"]) {
-    sheet.getCell(`${col}11`).value = String(sheet.getCell(`${col}11`).value || "").replace(/\((?:LKR|USD|RS\.?)\)/ig, `(${currency})`);
-  }
-  for (let row = 12; row <= 21; row++) {
-    for (const col of ["D", "E", "F", "G"]) {
-      sheet.getCell(`${col}${row}`).numFmt = amountFormat;
-    }
-  }
-  for (const cell of ["G23", "G24", "G25"]) {
-    sheet.getCell(cell).numFmt = amountFormat;
-  }
-
-  /*
-  ============================================================
-  SUMMARY
-  ============================================================
-  */
-
-  set(
-    "G23",
-    data.subtotal
-  );
-
-  set(
-    "G24",
-    data.tax
-  );
-
-  set(
-    "G25",
-    data.total
-  );
-
-  /*
-  ============================================================
-  FILE PATHS
-  ============================================================
-  */
-
-  const xlsxPath = path.join(
-    outputDir,
-    `${invoiceNumber}.xlsx`
-  );
-
-  const pdfPath = path.join(
-    outputDir,
-    `${invoiceNumber}.pdf`
-  );
-
-  /*
-  ============================================================
-  WRITE EXCEL FILE
-  ============================================================
-  */
-
-  await workbook.xlsx.writeFile(
-    xlsxPath
-  );
-
-  /*
-  ============================================================
-  CONVERT EXCEL -> PDF
-  ============================================================
-  */
-
-  try {
-    await execFileAsync(
-      libreOfficePath,
-      [
-        "--headless",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        outputDir,
-        xlsxPath
-      ]
-    );
-  } catch (error) {
-    console.error(
-      "LibreOffice error:",
-      error
-    );
-
-    throw new Error(
-      `PDF conversion failed. LibreOffice executable was not found or conversion failed.\nPath: ${libreOfficePath}`
-    );
-  }
-
-  /*
-  ============================================================
-  VERIFY PDF
-  ============================================================
-  */
-
-  if (!fs.existsSync(pdfPath)) {
-    throw new Error(
-      "PDF conversion completed but no PDF file was created."
-    );
+  const stat = await fs.promises.stat(pdfPath);
+  if (!stat.isFile() || stat.size === 0) {
+    throw new Error("PDF invoice generation finished, but the PDF file is empty.");
   }
 
   return {
-    xlsxPath,
+    xlsxPath: null,
     pdfPath
   };
 }
 
 /*
-============================================================
-CALCULATE INVOICE
-============================================================
-*/
-
-export function calculateInvoice(invoiceData) {
-  const quantity = Math.max(
-    1,
-    money(invoiceData.quantity)
-  );
-
-  const unitPrice = money(
-    invoiceData.unitPrice
-  );
-
-  const discount = Math.max(
-    0,
-    money(invoiceData.discount)
-  );
-
-  const tax = Math.max(
-    0,
-    money(invoiceData.tax)
-  );
-
-  // Price before discount/tax
-  const subtotal =
-    quantity * unitPrice;
-
-  // Discount applies to the whole line
-  const lineTotal = Math.max(
-    0,
-    subtotal - discount
-  );
-
-  // Final invoice total
-  const total =
-    lineTotal + tax;
+ * Calculate invoice totals while preserving the original module API.
+ */
+export function calculateInvoice(invoiceData = {}) {
+  const quantity = Math.max(1, money(invoiceData.quantity));
+  const unitPrice = money(invoiceData.unitPrice);
+  const discount = Math.max(0, money(invoiceData.discount));
+  const tax = Math.max(0, money(invoiceData.tax));
+  const subtotal = quantity * unitPrice;
+  const lineTotal = Math.max(0, subtotal - discount);
+  const total = lineTotal + tax;
 
   return {
     quantity,
